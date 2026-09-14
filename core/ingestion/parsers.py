@@ -78,3 +78,51 @@ def _table_to_markdown(table: list[list[str | None]]) -> str:
     for row in body_rows:
         lines.append("| " + " | ".join(row) + " |")
     return "\n".join(lines)
+
+
+from bs4 import BeautifulSoup
+
+_HEADING_LEVELS = {"h1": 0, "h2": 1, "h3": 2}
+
+
+def parse_html(path: str) -> list[Block]:
+    with open(path, encoding="utf-8") as f:
+        soup = BeautifulSoup(f.read(), "lxml")
+
+    blocks: list[Block] = []
+    heading_path: list[str] = []
+    body = soup.body or soup
+
+    for el in body.find_all(["h1", "h2", "h3", "p", "table", "ul", "ol"]):
+        if el.name in _HEADING_LEVELS:
+            level = _HEADING_LEVELS[el.name]
+            heading_path = heading_path[:level] + [el.get_text(strip=True)]
+            continue
+
+        if el.name == "table":
+            blocks.append(Block(list(heading_path), BlockType.TABLE, _html_table_to_markdown(el)))
+            continue
+
+        if el.name in ("ul", "ol"):
+            items = [li.get_text(strip=True) for li in el.find_all("li")]
+            content = "\n".join(f"{i + 1}. {item}" for i, item in enumerate(items))
+            blocks.append(Block(list(heading_path), BlockType.LIST, content))
+            continue
+
+        text = el.get_text(strip=True)
+        if text:
+            blocks.append(Block(list(heading_path), BlockType.TEXT, text))
+
+    return blocks
+
+
+def _html_table_to_markdown(table_tag) -> str:
+    rows = []
+    for tr in table_tag.find_all("tr"):
+        cells = [c.get_text(strip=True) for c in tr.find_all(["td", "th"])]
+        rows.append(cells)
+    header, *body_rows = rows
+    lines = ["| " + " | ".join(header) + " |", "| " + " | ".join(["---"] * len(header)) + " |"]
+    for row in body_rows:
+        lines.append("| " + " | ".join(row) + " |")
+    return "\n".join(lines)
