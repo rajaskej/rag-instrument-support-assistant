@@ -31,27 +31,40 @@ def parse_pdf(path: str) -> list[Block]:
             for w in words:
                 lines.setdefault(round(w["top"], 1), []).append(w)
 
-            for top in sorted(lines.keys()):
-                line_words = sorted(lines[top], key=lambda w: w["x0"])
-                text = " ".join(w["text"] for w in line_words).strip()
+            # Build a single list of per-page events (text lines and tables)
+            # ordered by vertical position, so a table is attached to whatever
+            # heading_path was active immediately above it on the page rather
+            # than whatever heading_path the page happened to end with.
+            events: list[tuple[float, str, object]] = []
+            for top, line_words in lines.items():
+                sorted_words = sorted(line_words, key=lambda w: w["x0"])
+                text = " ".join(w["text"] for w in sorted_words).strip()
                 if not text:
                     continue
-                avg_size = sum(w["size"] for w in line_words) / len(line_words)
+                avg_size = sum(w["size"] for w in sorted_words) / len(sorted_words)
+                events.append((top, "line", (text, avg_size)))
 
-                if avg_size >= H1_MIN_SIZE:
+            for table in page.find_tables():
+                events.append((table.bbox[1], "table", table.extract()))
+
+            events.sort(key=lambda e: e[0])
+
+            for _, kind, payload in events:
+                if kind == "line":
+                    text, avg_size = payload
+                    if avg_size >= H1_MIN_SIZE:
+                        flush_text()
+                        heading_path = [text]
+                        continue
+                    if avg_size >= H2_MIN_SIZE:
+                        flush_text()
+                        heading_path = (heading_path[:1] if heading_path else []) + [text]
+                        continue
+
+                    text_buffer.append(text)
+                else:
                     flush_text()
-                    heading_path = [text]
-                    continue
-                if avg_size >= H2_MIN_SIZE:
-                    flush_text()
-                    heading_path = (heading_path[:1] if heading_path else []) + [text]
-                    continue
-
-                text_buffer.append(text)
-
-            for table in page.extract_tables():
-                flush_text()
-                blocks.append(Block(list(heading_path), BlockType.TABLE, _table_to_markdown(table)))
+                    blocks.append(Block(list(heading_path), BlockType.TABLE, _table_to_markdown(payload)))
 
         flush_text()
 
