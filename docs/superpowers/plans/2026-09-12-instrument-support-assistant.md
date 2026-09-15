@@ -1640,6 +1640,22 @@ def test_hybrid_retriever_filters_by_model_number(tmp_path):
     assert 0.0 < results[0].score < 1.0
 
 
+def test_hybrid_retriever_model_filter_does_not_leak_other_models_when_only_one_index_has_a_match(tmp_path):
+    dense = DenseIndex(collection_name="hybrid_asymmetric_test", persist_dir=str(tmp_path))
+    wrong_model_chunk = _chunk("wrong_model", "Error E-104: Peltier temperature control fault.", model_number="DM-8200")
+    target_model_chunk = _chunk("target_model", "Error E-104: air bubble detected in the density cell.", model_number="DM-5400")
+
+    # Dense index only has the wrong model's chunk for this query; BM25 has both.
+    dense.add([wrong_model_chunk])
+    bm25 = BM25Index()
+    bm25.build([wrong_model_chunk, target_model_chunk])
+
+    retriever = HybridRetriever(dense, bm25, reranker=Reranker())
+    results = retriever.retrieve("What does E-104 mean?", top_k=5, model_number_filter="DM-5400")
+
+    assert all(r.chunk.model_number == "DM-5400" for r in results)
+
+
 def test_bm25_only_and_dense_only_retrievers_share_the_retrieve_interface(tmp_path):
     dense = DenseIndex(collection_name="ablation_test", persist_dir=str(tmp_path))
     chunks = [_chunk("c1", "Some content about density meters.")]
@@ -1738,8 +1754,10 @@ class HybridRetriever:
         bm25_hits = [c for c, _ in self._bm25.query(query, self._fetch_k)]
 
         if model_number_filter:
-            dense_hits = self._filter_by_model(dense_hits, model_number_filter)
-            bm25_hits = self._filter_by_model(bm25_hits, model_number_filter)
+            dense_filtered = [c for c in dense_hits if c.model_number == model_number_filter]
+            bm25_filtered = [c for c in bm25_hits if c.model_number == model_number_filter]
+            if dense_filtered or bm25_filtered:
+                dense_hits, bm25_hits = dense_filtered, bm25_filtered
 
         fused = reciprocal_rank_fusion([dense_hits, bm25_hits])
 
@@ -1748,11 +1766,6 @@ class HybridRetriever:
 
         reranked = self._reranker.rerank(query, fused, top_k)
         return [RetrievalResult(c, _sigmoid(float(score))) for c, score in reranked]
-
-    @staticmethod
-    def _filter_by_model(chunks: list[Chunk], model_number: str) -> list[Chunk]:
-        filtered = [c for c in chunks if c.model_number == model_number]
-        return filtered if filtered else chunks
 
 
 class BM25OnlyRetriever:
