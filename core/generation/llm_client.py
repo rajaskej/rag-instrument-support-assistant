@@ -43,8 +43,4 @@ def _extract_usage(interaction) -> tuple[int, int]:
     usage = getattr(interaction, "usage", None)
     if usage is None:
         return 0, 0
-    input_tokens = getattr(usage, "input_tokens", None)
-    output_tokens = getattr(usage, "output_tokens", None)
-    if input_tokens is not None and output_tokens is not None:
-        return input_tokens, output_tokens
-    return getattr(usage, "prompt_token_count", 0), getattr(usage, "candidates_token_count", 0)
+    return getattr(usage, "total_input_tokens", 0) or 0, getattr(usage, "total_output_tokens", 0) or 0

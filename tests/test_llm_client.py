@@ -4,8 +4,8 @@ from core.generation.llm_client import GeminiClient
 
 class _FakeUsage:
     def __init__(self):
-        self.input_tokens = 12
-        self.output_tokens = 7
+        self.total_input_tokens = 12
+        self.total_output_tokens = 7
 
 
 class _FakeInteraction:
