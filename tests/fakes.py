@@ -1,5 +1,5 @@
 # tests/fakes.py
-class FakeAnthropicClient:
+class FakeLLMClient:
     def __init__(self, reply_text: str, input_tokens: int = 10, output_tokens: int = 10):
         self._reply_text = reply_text
         self._input_tokens = input_tokens
