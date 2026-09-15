@@ -30,3 +30,12 @@ def test_dense_index_preserves_metadata(tmp_path):
     assert chunk.model_number == "RH-870"
     assert chunk.section_path == "Overview"
     assert chunk.doc_type == "manual"
+
+
+def test_dense_index_round_trips_none_model_number(tmp_path):
+    index = DenseIndex(collection_name="test_none_model", persist_dir=str(tmp_path))
+    index.add([_chunk("c1", "General overview text with no specific model.", model_number=None)])
+
+    results = index.query("General overview text with no specific model.", top_k=1)
+
+    assert results[0][0].model_number is None
