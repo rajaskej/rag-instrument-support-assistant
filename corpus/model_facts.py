@@ -44,7 +44,7 @@ MODELS = [
         ],
         "symptoms": [("Reading is unstable and drifts erratically mid-measurement", "E-104")],
         "app_report": {
-            "title": "Measuring Density of High-Viscosity Polymer Melts with the DM-4500",
+            "title": "Measuring Density of High-Viscosity Polymer Melts with the DM-5400",
             "focus": "using the built-in viscosity correction to measure polymer melt density accurately above 2000 mPa.s",
         },
     },
@@ -71,7 +71,7 @@ MODELS = [
         ],
         "symptoms": [("Instrument stops mid-run with the carousel motor still audible", "E-402")],
         "app_report": {
-            "title": "High-Throughput QC Density Screening with the DM-7000 Automated Sample Changer",
+            "title": "High-Throughput QC Density Screening with the DM-8200 Automated Sample Changer",
             "focus": "using the automated sample changer to screen 50+ samples per shift in a QC lab",
         },
     },
@@ -118,7 +118,7 @@ MODELS = [
         ],
         "symptoms": [("Normal force reading does not return to zero when the geometry is lifted clear of the sample", "E-602")],
         "app_report": {
-            "title": "Characterizing Viscoelastic Behavior of Adhesives with the RH-350",
+            "title": "Characterizing Viscoelastic Behavior of Adhesives with the RH-540",
             "focus": "using oscillatory amplitude sweeps on the Peltier plate to characterize cure behavior of adhesives",
         },
     },
@@ -146,7 +146,7 @@ MODELS = [
         ],
         "symptoms": [("Oscillation test aborts immediately when a high frequency sweep is requested", "E-801")],
         "app_report": {
-            "title": "Frequency Sweep Analysis of Thermoplastics with the RH-900",
+            "title": "Frequency Sweep Analysis of Thermoplastics with the RH-870",
             "focus": "using extended-bandwidth oscillatory frequency sweeps to map the viscoelastic spectrum of thermoplastics",
         },
     },
