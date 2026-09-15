@@ -1,6 +1,6 @@
 MODELS = [
     {
-        "model_number": "DM-2100",
+        "model_number": "DM-2600",
         "family": "density_meter",
         "tagline": "entry-level benchtop density meter",
         "density_range": "0 to 3 g/cm3",
@@ -21,7 +21,7 @@ MODELS = [
         "symptoms": [("Reading drifts upward slowly during a measurement", "E-201")],
     },
     {
-        "model_number": "DM-4500",
+        "model_number": "DM-5400",
         "family": "density_meter",
         "tagline": "mid-range density meter with viscosity correction",
         "density_range": "0 to 3 g/cm3",
@@ -49,7 +49,7 @@ MODELS = [
         },
     },
     {
-        "model_number": "DM-7000",
+        "model_number": "DM-8200",
         "family": "density_meter",
         "tagline": "high-end automated density meter with sample changer",
         "density_range": "0 to 3 g/cm3",
@@ -76,7 +76,7 @@ MODELS = [
         },
     },
     {
-        "model_number": "RH-150",
+        "model_number": "RH-220",
         "family": "rheometer",
         "tagline": "entry-level rotational rheometer",
         "torque_range": "0.1 to 150 mNm",
@@ -96,7 +96,7 @@ MODELS = [
         "symptoms": [("Torque reading pins at maximum immediately on startup", "E-501")],
     },
     {
-        "model_number": "RH-350",
+        "model_number": "RH-540",
         "family": "rheometer",
         "tagline": "mid-range rheometer with Peltier temperature control",
         "torque_range": "0.05 to 200 mNm",
@@ -123,7 +123,7 @@ MODELS = [
         },
     },
     {
-        "model_number": "RH-900",
+        "model_number": "RH-870",
         "family": "rheometer",
         "tagline": "high-end rheometer for oscillatory and rotational testing",
         "torque_range": "0.01 to 300 mNm",
