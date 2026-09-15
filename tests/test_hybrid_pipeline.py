@@ -46,6 +46,22 @@ def test_hybrid_retriever_filters_by_model_number(tmp_path):
     assert 0.0 < results[0].score < 1.0
 
 
+def test_hybrid_retriever_model_filter_does_not_leak_other_models_when_only_one_index_has_a_match(tmp_path):
+    dense = DenseIndex(collection_name="hybrid_asymmetric_test", persist_dir=str(tmp_path))
+    wrong_model_chunk = _chunk("wrong_model", "Error E-104: Peltier temperature control fault.", model_number="DM-8200")
+    target_model_chunk = _chunk("target_model", "Error E-104: air bubble detected in the density cell.", model_number="DM-5400")
+
+    # Dense index only has the wrong model's chunk for this query; BM25 has both.
+    dense.add([wrong_model_chunk])
+    bm25 = BM25Index()
+    bm25.build([wrong_model_chunk, target_model_chunk])
+
+    retriever = HybridRetriever(dense, bm25, reranker=Reranker())
+    results = retriever.retrieve("What does E-104 mean?", top_k=5, model_number_filter="DM-5400")
+
+    assert all(r.chunk.model_number == "DM-5400" for r in results)
+
+
 def test_bm25_only_and_dense_only_retrievers_share_the_retrieve_interface(tmp_path):
     dense = DenseIndex(collection_name="ablation_test", persist_dir=str(tmp_path))
     chunks = [_chunk("c1", "Some content about density meters.")]

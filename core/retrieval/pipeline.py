@@ -30,8 +30,10 @@ class HybridRetriever:
         bm25_hits = [c for c, _ in self._bm25.query(query, self._fetch_k)]
 
         if model_number_filter:
-            dense_hits = self._filter_by_model(dense_hits, model_number_filter)
-            bm25_hits = self._filter_by_model(bm25_hits, model_number_filter)
+            dense_filtered = [c for c in dense_hits if c.model_number == model_number_filter]
+            bm25_filtered = [c for c in bm25_hits if c.model_number == model_number_filter]
+            if dense_filtered or bm25_filtered:
+                dense_hits, bm25_hits = dense_filtered, bm25_filtered
 
         fused = reciprocal_rank_fusion([dense_hits, bm25_hits])
 
@@ -40,11 +42,6 @@ class HybridRetriever:
 
         reranked = self._reranker.rerank(query, fused, top_k)
         return [RetrievalResult(c, _sigmoid(float(score))) for c, score in reranked]
-
-    @staticmethod
-    def _filter_by_model(chunks: list[Chunk], model_number: str) -> list[Chunk]:
-        filtered = [c for c in chunks if c.model_number == model_number]
-        return filtered if filtered else chunks
 
 
 class BM25OnlyRetriever:
