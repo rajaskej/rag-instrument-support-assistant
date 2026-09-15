@@ -41,8 +41,25 @@ def test_handle_escalates_when_confidence_is_below_threshold():
 
 
 def test_handle_escalates_immediately_for_unknown_model_number():
-    retriever = _FakeRetriever([_result(score=0.9)])
-    client = FakeLLMClient(reply_text="should not be called")
+    class _RetrieverSpy:
+        def __init__(self):
+            self.called = False
+
+        def retrieve(self, query, top_k=5, model_number_filter=None):
+            self.called = True
+            raise AssertionError("retriever.retrieve should not be called for an unknown model number")
+
+    class _ClientSpy:
+        def __init__(self):
+            self.called = False
+            self.messages = self
+
+        def create(self, **kwargs):
+            self.called = True
+            raise AssertionError("client.messages.create should not be called for an unknown model number")
+
+    retriever = _RetrieverSpy()
+    client = _ClientSpy()
     agent = InstrumentSupportAgent(retriever, client, "gemini-3.8-flash", known_model_numbers={"DM-5400"})
 
     response = agent.handle(Ticket(symptom_or_error_code="E-999", model_number="ZZ-0000"))
@@ -50,6 +67,8 @@ def test_handle_escalates_immediately_for_unknown_model_number():
     assert response.escalate is True
     assert response.confidence == 0.0
     assert response.citations == []
+    assert retriever.called is False
+    assert client.called is False
 
 
 def test_handle_with_metadata_reports_latency_and_token_usage():
