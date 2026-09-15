@@ -32,6 +32,7 @@
 - Create: `core/__init__.py`, `core/config.py`
 - Create: `core/ingestion/__init__.py`, `core/retrieval/__init__.py`, `core/generation/__init__.py`, `core/eval/__init__.py`
 - Create: `core/generation/llm_client.py`
+- Test: `tests/test_llm_client.py`
 - Create: `domains/__init__.py`, `domains/instrument_support/__init__.py`
 - Create: `corpus/__init__.py`
 - Create: `serving/__init__.py`, `observability/__init__.py`
@@ -171,6 +172,64 @@ def _extract_usage(interaction) -> tuple[int, int]:
 
 The Gemini "Interactions API" (`client.interactions.create`) is a newer surface than what may be in an implementer's training data — if `genai.Client()`, `.interactions.create(...)`, or `interaction.output_text` don't match what's actually installed (check `pip show google-genai` and the installed package's own docstrings/type hints if the real API call fails), treat that as a live API to verify against, not a spec to blindly trust: adjust `_extract_usage`'s attribute names (or the call shape) to match what the installed SDK actually returns, and note what you found in your report. The `max_tokens` parameter is accepted for interface compatibility but intentionally unused here — the Interactions API's free-tier flash model doesn't need an explicit output cap for the short answers this project generates.
 
+Write a structural test that verifies `GeminiClient`'s mapping logic without any network call, by monkeypatching `genai.Client`:
+
+```python
+# tests/test_llm_client.py
+from core.generation.llm_client import GeminiClient
+
+
+class _FakeUsage:
+    def __init__(self):
+        self.input_tokens = 12
+        self.output_tokens = 7
+
+
+class _FakeInteraction:
+    def __init__(self, text):
+        self.output_text = text
+        self.usage = _FakeUsage()
+
+
+class _FakeInteractions:
+    def __init__(self, text):
+        self._text = text
+        self.last_call = None
+
+    def create(self, **kwargs):
+        self.last_call = kwargs
+        return _FakeInteraction(self._text)
+
+
+class _FakeGenaiClient:
+    def __init__(self, text):
+        self.interactions = _FakeInteractions(text)
+
+
+def test_gemini_client_create_maps_to_anthropic_style_response(monkeypatch):
+    import core.generation.llm_client as llm_client_module
+
+    fake_genai_client = _FakeGenaiClient("Hello world")
+    monkeypatch.setattr(llm_client_module.genai, "Client", lambda: fake_genai_client)
+
+    client = GeminiClient()
+    response = client.messages.create(
+        model="gemini-3.8-flash",
+        max_tokens=100,
+        system="You are helpful.",
+        messages=[{"role": "user", "content": "Hi"}],
+    )
+
+    assert response.content[0].text == "Hello world"
+    assert response.usage.input_tokens == 12
+    assert response.usage.output_tokens == 7
+    assert fake_genai_client.interactions.last_call["model"] == "gemini-3.8-flash"
+    assert fake_genai_client.interactions.last_call["system_instruction"] == "You are helpful."
+    assert fake_genai_client.interactions.last_call["input"] == "Hi"
+```
+
+Run `pytest tests/test_llm_client.py -v` and confirm it passes before moving on — this is the only coverage `GeminiClient`'s mapping logic gets, since the real network call is exercised only by manual smoke tests later.
+
 - [ ] **Step 6: Write the shared fake LLM client used by every generation/eval test**
 
 ```python
@@ -207,10 +266,10 @@ class _FakeUsage:
 
 ```bash
 pip install -e ".[dev]"
-pytest --collect-only
+pytest -v
 ```
 
-Expected: no errors, "no tests ran" (there are no test files yet).
+Expected: no errors; `tests/test_llm_client.py`'s test passes (1/1) — it's the only test file this task creates.
 
 - [ ] **Step 8: Commit**
 
