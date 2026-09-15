@@ -163,14 +163,10 @@ def _extract_usage(interaction) -> tuple[int, int]:
     usage = getattr(interaction, "usage", None)
     if usage is None:
         return 0, 0
-    input_tokens = getattr(usage, "input_tokens", None)
-    output_tokens = getattr(usage, "output_tokens", None)
-    if input_tokens is not None and output_tokens is not None:
-        return input_tokens, output_tokens
-    return getattr(usage, "prompt_token_count", 0), getattr(usage, "candidates_token_count", 0)
+    return getattr(usage, "total_input_tokens", 0) or 0, getattr(usage, "total_output_tokens", 0) or 0
 ```
 
-The Gemini "Interactions API" (`client.interactions.create`) is a newer surface than what may be in an implementer's training data — if `genai.Client()`, `.interactions.create(...)`, or `interaction.output_text` don't match what's actually installed (check `pip show google-genai` and the installed package's own docstrings/type hints if the real API call fails), treat that as a live API to verify against, not a spec to blindly trust: adjust `_extract_usage`'s attribute names (or the call shape) to match what the installed SDK actually returns, and note what you found in your report. The `max_tokens` parameter is accepted for interface compatibility but intentionally unused here — the Interactions API's free-tier flash model doesn't need an explicit output cap for the short answers this project generates.
+Confirmed against the installed `google-genai==2.23.0` package's real type definitions (`google/genai/_gaos/types/interactions/{interaction,usage,createmodelinteraction,model,interactionsinput}.py`): `client.interactions.create(model=, system_instruction=, input=)` and `interaction.output_text`/`interaction.usage` are genuine, current fields (not hallucinated — `model` accepts `"gemini-3.8-flash"` as a real listed enum value, `input` accepts a plain `str`), but the `Usage` object's real field names are `total_input_tokens`/`total_output_tokens` — not `input_tokens`/`output_tokens` as an Anthropic-shaped guess would assume, and not the old Gemini API's `prompt_token_count`/`candidates_token_count` either. If a later implementer needs to re-verify any of this against a different installed version, read the type files directly (`find <venv>/site-packages/google/genai -iname "*.py" | xargs grep -l "class Usage"` or similar) rather than trusting introspection alone — the field names are defined in real Python source, not just runtime `dir()` output.
 
 Write a structural test that verifies `GeminiClient`'s mapping logic without any network call, by monkeypatching `genai.Client`:
 
@@ -181,8 +177,8 @@ from core.generation.llm_client import GeminiClient
 
 class _FakeUsage:
     def __init__(self):
-        self.input_tokens = 12
-        self.output_tokens = 7
+        self.total_input_tokens = 12
+        self.total_output_tokens = 7
 
 
 class _FakeInteraction:
