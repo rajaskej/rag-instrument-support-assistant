@@ -1,8 +1,7 @@
 from pathlib import Path
 
-import anthropic
-
 from core.config import CORPUS_GEN_MODEL
+from core.generation.llm_client import GeminiClient
 from corpus.model_facts import MODELS
 
 RAW_DIR = Path(__file__).parent / "raw"
@@ -71,7 +70,7 @@ def generate_doc(client, prompt: str) -> str:
 
 def main() -> None:
     RAW_DIR.mkdir(parents=True, exist_ok=True)
-    client = anthropic.Anthropic()
+    client = GeminiClient()
 
     for model in MODELS:
         manual_prompt = MANUAL_TEMPLATE.format(

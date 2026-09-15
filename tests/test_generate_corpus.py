@@ -3,11 +3,11 @@ from pathlib import Path
 
 from corpus.generate_corpus import generate_doc, main
 from corpus.model_facts import MODELS
-from tests.fakes import FakeAnthropicClient
+from tests.fakes import FakeLLMClient
 
 
 def test_generate_doc_returns_client_reply_text():
-    client = FakeAnthropicClient(reply_text="# Overview\n\nSome generated content.")
+    client = FakeLLMClient(reply_text="# Overview\n\nSome generated content.")
     result = generate_doc(client, "irrelevant prompt")
     assert result == "# Overview\n\nSome generated content."
 
@@ -16,7 +16,7 @@ def test_main_writes_one_manual_and_spec_sheet_per_model_and_app_reports_where_p
     import corpus.generate_corpus as gen
 
     monkeypatch.setattr(gen, "RAW_DIR", tmp_path)
-    monkeypatch.setattr(gen, "anthropic", type("_M", (), {"Anthropic": lambda: FakeAnthropicClient("# Doc\n\ncontent")}))
+    monkeypatch.setattr(gen, "GeminiClient", lambda: FakeLLMClient("# Doc\n\ncontent"))
 
     gen.main()
 
