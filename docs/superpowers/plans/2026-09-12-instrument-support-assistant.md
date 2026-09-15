@@ -4,9 +4,9 @@
 
 **Goal:** Build an end-to-end RAG technical-support assistant for a fictional instrument line (density meters + rheometers) that demonstrates hybrid retrieval, rigorous evaluation (including a 3-way ablation), and a deployed Streamlit app.
 
-**Architecture:** A domain-agnostic core (`core/ingestion`, `core/retrieval`, `core/generation`, `core/eval`) is combined with one concrete domain (`domains/instrument_support`) exposing an `Agent.handle(request) -> Response` interface. A synthetic corpus is authored via the Claude API and rendered to a mix of PDF/HTML, then parsed, chunked, and indexed with both BM25 and dense (Chroma) search, fused with Reciprocal Rank Fusion, and reranked with a cross-encoder. FastAPI and Streamlit both sit on top of the same in-process Python modules.
+**Architecture:** A domain-agnostic core (`core/ingestion`, `core/retrieval`, `core/generation`, `core/eval`) is combined with one concrete domain (`domains/instrument_support`) exposing an `Agent.handle(request) -> Response` interface. A synthetic corpus is authored via the Gemini API and rendered to a mix of PDF/HTML, then parsed, chunked, and indexed with both BM25 and dense (Chroma) search, fused with Reciprocal Rank Fusion, and reranked with a cross-encoder. FastAPI and Streamlit both sit on top of the same in-process Python modules.
 
-**Tech Stack:** Python 3.11+, `anthropic` SDK, `chromadb`, `sentence-transformers` (dense embeddings + cross-encoder reranker), `rank_bm25`, `pdfplumber`, `beautifulsoup4`/`lxml`, `markdown` + `xhtml2pdf` (corpus rendering), FastAPI, Streamlit, `pytest`.
+**Tech Stack:** Python 3.11+, `google-genai` SDK (Gemini API, free tier — zero API cost for the whole project), `chromadb`, `sentence-transformers` (dense embeddings + cross-encoder reranker), `rank_bm25`, `pdfplumber`, `beautifulsoup4`/`lxml`, `markdown` + `xhtml2pdf` (corpus rendering), FastAPI, Streamlit, `pytest`.
 
 ## Global Constraints
 
@@ -14,14 +14,13 @@
 - Dense embeddings: `sentence-transformers/all-MiniLM-L6-v2` (local, no extra API key).
 - Reranker: `cross-encoder/ms-marco-MiniLM-L-6-v2` (local).
 - Vector DB: Chroma with file-based persistence (`chromadb.PersistentClient`) — no external service.
-- Generation and judge LLM: Claude Haiku, model ID `claude-haiku-4-5` (pricing: $1.00/MTok input, $5.00/MTok output — used for observability cost estimates).
-- Corpus generation LLM: Claude Sonnet 5, model ID `claude-sonnet-5`.
+- Generation, judge, and corpus-generation LLM: Gemini 3.8 Flash, model ID `gemini-3.8-flash`, called via the Gemini API's free tier — the whole project runs at $0 API cost. One model used everywhere (no cost-driven tiering) since the free tier is what makes cost irrelevant.
 - The corpus is 100% original synthetic content (fictional `DM-` density meter and `RH-` rheometer models) — never Anton Paar's real documentation or site content. The README must disclose this.
 - No multi-step agentic planning: the agent is exactly one retrieve → draft → score → decide pass per request.
 - Chunking: split at heading boundaries; a table is never split; a numbered procedure is split only at step boundaries if it exceeds ~500 tokens; every chunk carries `doc_id`, `model_number`, `section_path`, `doc_type` metadata.
 - Eval: a ~40-item test set with out-of-scope items, and a 3-way ablation (BM25-only / dense-only / hybrid+rerank) reported as one table.
 - Deployed Streamlit app embeds the core modules in-process — it does not call a separately-running FastAPI service.
-- All Claude API calls take an injected `client` object (never construct `anthropic.Anthropic()` inside library code) so tests can substitute a fake client with no network access.
+- All LLM calls take an injected `client` object (never construct the real Gemini client inside library code) so tests can substitute a fake client with no network access. The injected `client` exposes an Anthropic-style `client.messages.create(model, max_tokens, system, messages) -> response` interface (`response.content[0].text`, `response.usage.input_tokens`/`output_tokens`) — implemented for real use by `core.generation.llm_client.GeminiClient`, a thin adapter over the Gemini API's `client.interactions.create(...)`, and by `tests.fakes.FakeLLMClient` in tests. This keeps `generate.py`/`metrics.py`/`agent.py` provider-agnostic: none of them import the Gemini SDK directly, only `GeminiClient` and the serving/script entry points do.
 
 ---
 
@@ -32,14 +31,16 @@
 - Create: `.gitignore`
 - Create: `core/__init__.py`, `core/config.py`
 - Create: `core/ingestion/__init__.py`, `core/retrieval/__init__.py`, `core/generation/__init__.py`, `core/eval/__init__.py`
+- Create: `core/generation/llm_client.py`
 - Create: `domains/__init__.py`, `domains/instrument_support/__init__.py`
 - Create: `corpus/__init__.py`
 - Create: `serving/__init__.py`, `observability/__init__.py`
 - Create: `tests/__init__.py`, `tests/fakes.py`
 
 **Interfaces:**
-- Produces: `core.config.DENSE_EMBEDDING_MODEL`, `RERANKER_MODEL`, `GENERATION_MODEL`, `JUDGE_MODEL`, `CORPUS_GEN_MODEL`, `MAX_CHUNK_TOKENS`, `HAIKU_INPUT_COST_PER_MTOK`, `HAIKU_OUTPUT_COST_PER_MTOK` (all consumed by later tasks).
-- Produces: `tests.fakes.FakeAnthropicClient` (a stand-in for `anthropic.Anthropic()` used by every test that calls generation code).
+- Produces: `core.config.DENSE_EMBEDDING_MODEL`, `RERANKER_MODEL`, `GENERATION_MODEL`, `JUDGE_MODEL`, `CORPUS_GEN_MODEL`, `MAX_CHUNK_TOKENS` (all consumed by later tasks).
+- Produces: `core.generation.llm_client.GeminiClient` — a thin adapter over the real Gemini API exposing `.messages.create(model, max_tokens, system=None, messages=[{"role": "user", "content": str}]) -> response`, where `response.content[0].text` and `response.usage.input_tokens`/`output_tokens` mirror the shape every later task's generation code (`generate.py`, `metrics.py`, `agent.py`) is written against. Consumed by Tasks 5, 15, 17, 18 wherever a real client is constructed.
+- Produces: `tests.fakes.FakeLLMClient` (a stand-in for `GeminiClient` used by every test that calls generation code — same `.messages.create(...)` shape).
 
 - [ ] **Step 1: Create the directory structure and package markers**
 
@@ -61,7 +62,7 @@ name = "instrument-support-rag"
 version = "0.1.0"
 requires-python = ">=3.11"
 dependencies = [
-    "anthropic",
+    "google-genai",
     "chromadb",
     "sentence-transformers",
     "rank_bm25",
@@ -105,20 +106,76 @@ import os
 
 DENSE_EMBEDDING_MODEL = "all-MiniLM-L6-v2"
 RERANKER_MODEL = "cross-encoder/ms-marco-MiniLM-L-6-v2"
-GENERATION_MODEL = os.environ.get("GENERATION_MODEL", "claude-haiku-4-5")
-JUDGE_MODEL = os.environ.get("JUDGE_MODEL", "claude-haiku-4-5")
-CORPUS_GEN_MODEL = os.environ.get("CORPUS_GEN_MODEL", "claude-sonnet-5")
+GENERATION_MODEL = os.environ.get("GENERATION_MODEL", "gemini-3.8-flash")
+JUDGE_MODEL = os.environ.get("JUDGE_MODEL", "gemini-3.8-flash")
+CORPUS_GEN_MODEL = os.environ.get("CORPUS_GEN_MODEL", "gemini-3.8-flash")
 MAX_CHUNK_TOKENS = 500
-
-HAIKU_INPUT_COST_PER_MTOK = 1.00
-HAIKU_OUTPUT_COST_PER_MTOK = 5.00
 ```
 
-- [ ] **Step 5: Write the shared fake Anthropic client used by every generation/eval test**
+- [ ] **Step 5: Write the Gemini client adapter**
+
+The rest of the codebase is written against an Anthropic-style `client.messages.create(model, max_tokens, system, messages) -> response` shape (`response.content[0].text`, `response.usage.input_tokens`/`output_tokens`). This adapter is the only place that imports the real `google-genai` SDK, so `generate.py`/`metrics.py`/`agent.py` stay provider-agnostic.
+
+```python
+# core/generation/llm_client.py
+from dataclasses import dataclass
+
+from google import genai
+
+
+@dataclass
+class _Usage:
+    input_tokens: int
+    output_tokens: int
+
+
+@dataclass
+class _ContentBlock:
+    text: str
+
+
+@dataclass
+class _Response:
+    content: list[_ContentBlock]
+    usage: _Usage
+
+
+class GeminiClient:
+    def __init__(self):
+        self._client = genai.Client()
+        self.messages = self
+
+    def create(self, model: str, max_tokens: int, messages: list[dict], system: str | None = None) -> _Response:
+        interaction = self._client.interactions.create(
+            model=model,
+            system_instruction=system,
+            input=messages[0]["content"],
+        )
+        input_tokens, output_tokens = _extract_usage(interaction)
+        return _Response(
+            content=[_ContentBlock(text=interaction.output_text)],
+            usage=_Usage(input_tokens, output_tokens),
+        )
+
+
+def _extract_usage(interaction) -> tuple[int, int]:
+    usage = getattr(interaction, "usage", None)
+    if usage is None:
+        return 0, 0
+    input_tokens = getattr(usage, "input_tokens", None)
+    output_tokens = getattr(usage, "output_tokens", None)
+    if input_tokens is not None and output_tokens is not None:
+        return input_tokens, output_tokens
+    return getattr(usage, "prompt_token_count", 0), getattr(usage, "candidates_token_count", 0)
+```
+
+The Gemini "Interactions API" (`client.interactions.create`) is a newer surface than what may be in an implementer's training data — if `genai.Client()`, `.interactions.create(...)`, or `interaction.output_text` don't match what's actually installed (check `pip show google-genai` and the installed package's own docstrings/type hints if the real API call fails), treat that as a live API to verify against, not a spec to blindly trust: adjust `_extract_usage`'s attribute names (or the call shape) to match what the installed SDK actually returns, and note what you found in your report. The `max_tokens` parameter is accepted for interface compatibility but intentionally unused here — the Interactions API's free-tier flash model doesn't need an explicit output cap for the short answers this project generates.
+
+- [ ] **Step 6: Write the shared fake LLM client used by every generation/eval test**
 
 ```python
 # tests/fakes.py
-class FakeAnthropicClient:
+class FakeLLMClient:
     def __init__(self, reply_text: str, input_tokens: int = 10, output_tokens: int = 10):
         self._reply_text = reply_text
         self._input_tokens = input_tokens
@@ -146,7 +203,7 @@ class _FakeUsage:
         self.output_tokens = output_tokens
 ```
 
-- [ ] **Step 6: Install and verify**
+- [ ] **Step 7: Install and verify**
 
 ```bash
 pip install -e ".[dev]"
@@ -155,7 +212,7 @@ pytest --collect-only
 
 Expected: no errors, "no tests ran" (there are no test files yet).
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
 git add pyproject.toml .gitignore core domains corpus serving observability tests eval_data scripts data
@@ -729,7 +786,7 @@ EOF
 - Test: `tests/test_generate_corpus.py`
 
 **Interfaces:**
-- Consumes: `core.config.CORPUS_GEN_MODEL`, `tests.fakes.FakeAnthropicClient`.
+- Consumes: `core.config.CORPUS_GEN_MODEL`, `tests.fakes.FakeLLMClient`.
 - Produces: `corpus.model_facts.MODELS` (list of dicts — ground truth used again by Task 6's renderer and Task 13's eval test set), `corpus.generate_corpus.generate_doc(client, prompt) -> str`, `main()`.
 
 This task defines the 6 fictional instruments (3 density meters, 3 rheometers) with their specs, error codes, and calibration steps — the single source of ground truth for both the corpus content and the eval test set. It deliberately includes error code `E-104` meaning different things on the DM-5400 ("air bubble in the density cell") and DM-8200 ("Peltier temperature control fault") — the retrieval-hard case the design calls for.
@@ -900,11 +957,11 @@ from pathlib import Path
 
 from corpus.generate_corpus import generate_doc, main
 from corpus.model_facts import MODELS
-from tests.fakes import FakeAnthropicClient
+from tests.fakes import FakeLLMClient
 
 
 def test_generate_doc_returns_client_reply_text():
-    client = FakeAnthropicClient(reply_text="# Overview\n\nSome generated content.")
+    client = FakeLLMClient(reply_text="# Overview\n\nSome generated content.")
     result = generate_doc(client, "irrelevant prompt")
     assert result == "# Overview\n\nSome generated content."
 
@@ -913,7 +970,7 @@ def test_main_writes_one_manual_and_spec_sheet_per_model_and_app_reports_where_p
     import corpus.generate_corpus as gen
 
     monkeypatch.setattr(gen, "RAW_DIR", tmp_path)
-    monkeypatch.setattr(gen, "anthropic", type("_M", (), {"Anthropic": lambda: FakeAnthropicClient("# Doc\n\ncontent")}))
+    monkeypatch.setattr(gen, "GeminiClient", lambda: FakeLLMClient("# Doc\n\ncontent"))
 
     gen.main()
 
@@ -937,9 +994,8 @@ Expected: FAIL with `ModuleNotFoundError: No module named 'corpus.generate_corpu
 ```python
 from pathlib import Path
 
-import anthropic
-
 from core.config import CORPUS_GEN_MODEL
+from core.generation.llm_client import GeminiClient
 from corpus.model_facts import MODELS
 
 RAW_DIR = Path(__file__).parent / "raw"
@@ -1008,7 +1064,7 @@ def generate_doc(client, prompt: str) -> str:
 
 def main() -> None:
     RAW_DIR.mkdir(parents=True, exist_ok=True)
-    client = anthropic.Anthropic()
+    client = GeminiClient()
 
     for model in MODELS:
         manual_prompt = MANUAL_TEMPLATE.format(
@@ -1061,7 +1117,7 @@ EOF
 )"
 ```
 
-- [ ] **Step 7: Run the real generation script once (requires `ANTHROPIC_API_KEY`)**
+- [ ] **Step 7: Run the real generation script once (requires `GEMINI_API_KEY` or `GOOGLE_API_KEY`)**
 
 ```bash
 python -m corpus.generate_corpus
@@ -1890,7 +1946,7 @@ Expected: prints a chunk count (roughly 100-200 depending on how sections split)
 - Test: `tests/test_generate.py`
 
 **Interfaces:**
-- Consumes: `RetrievalResult` from Task 9, `tests.fakes.FakeAnthropicClient`.
+- Consumes: `RetrievalResult` from Task 9, `tests.fakes.FakeLLMClient`.
 - Produces: `GroundedAnswer(text: str, citations: list[str], insufficient: bool, input_tokens: int, output_tokens: int)`, `build_context_block(results) -> str`, `generate_grounded_answer(query, results, client, model) -> GroundedAnswer`. Consumed by Task 12 (agent) and Task 13 (eval runner).
 
 - [ ] **Step 1: Write the failing test**
@@ -1900,7 +1956,7 @@ Expected: prints a chunk count (roughly 100-200 depending on how sections split)
 from core.generation.generate import build_context_block, generate_grounded_answer
 from core.ingestion.models import Chunk
 from core.retrieval.pipeline import RetrievalResult
-from tests.fakes import FakeAnthropicClient
+from tests.fakes import FakeLLMClient
 
 
 def _result(text, doc_id="DM-5400_manual", section_path="Error Codes > E-104"):
@@ -1916,12 +1972,12 @@ def test_build_context_block_includes_doc_id_and_section():
 
 
 def test_generate_grounded_answer_extracts_citations_and_usage():
-    client = FakeAnthropicClient(
+    client = FakeLLMClient(
         reply_text="Purge the cell and refill slowly. [DM-5400_manual, Error Codes > E-104]",
         input_tokens=42,
         output_tokens=17,
     )
-    answer = generate_grounded_answer("What does E-104 mean?", [_result("Air bubble detected.")], client, "claude-haiku-4-5")
+    answer = generate_grounded_answer("What does E-104 mean?", [_result("Air bubble detected.")], client, "gemini-3.8-flash")
 
     assert "DM-5400_manual, Error Codes > E-104" in answer.citations
     assert answer.insufficient is False
@@ -1930,8 +1986,8 @@ def test_generate_grounded_answer_extracts_citations_and_usage():
 
 
 def test_generate_grounded_answer_flags_insufficient_information():
-    client = FakeAnthropicClient(reply_text="Insufficient information in the available documentation.")
-    answer = generate_grounded_answer("What is the warranty period?", [_result("Air bubble detected.")], client, "claude-haiku-4-5")
+    client = FakeLLMClient(reply_text="Insufficient information in the available documentation.")
+    answer = generate_grounded_answer("What is the warranty period?", [_result("Air bubble detected.")], client, "gemini-3.8-flash")
     assert answer.insufficient is True
 ```
 
@@ -2037,7 +2093,7 @@ EOF
 from core.ingestion.models import Chunk
 from core.retrieval.pipeline import RetrievalResult
 from domains.instrument_support.agent import InstrumentSupportAgent, Ticket
-from tests.fakes import FakeAnthropicClient
+from tests.fakes import FakeLLMClient
 
 
 class _FakeRetriever:
@@ -2055,8 +2111,8 @@ def _result(score, doc_id="DM-5400_manual", section_path="Error Codes > E-104"):
 
 def test_handle_returns_grounded_answer_when_confidence_is_high():
     retriever = _FakeRetriever([_result(score=0.9)])
-    client = FakeAnthropicClient(reply_text="Purge and refill. [DM-5400_manual, Error Codes > E-104]")
-    agent = InstrumentSupportAgent(retriever, client, "claude-haiku-4-5", known_model_numbers={"DM-5400"})
+    client = FakeLLMClient(reply_text="Purge and refill. [DM-5400_manual, Error Codes > E-104]")
+    agent = InstrumentSupportAgent(retriever, client, "gemini-3.8-flash", known_model_numbers={"DM-5400"})
 
     response = agent.handle(Ticket(symptom_or_error_code="E-104", model_number="DM-5400"))
 
@@ -2067,8 +2123,8 @@ def test_handle_returns_grounded_answer_when_confidence_is_high():
 
 def test_handle_escalates_when_confidence_is_below_threshold():
     retriever = _FakeRetriever([_result(score=0.1)])
-    client = FakeAnthropicClient(reply_text="Purge and refill. [DM-5400_manual, Error Codes > E-104]")
-    agent = InstrumentSupportAgent(retriever, client, "claude-haiku-4-5", known_model_numbers={"DM-5400"}, confidence_threshold=0.4)
+    client = FakeLLMClient(reply_text="Purge and refill. [DM-5400_manual, Error Codes > E-104]")
+    agent = InstrumentSupportAgent(retriever, client, "gemini-3.8-flash", known_model_numbers={"DM-5400"}, confidence_threshold=0.4)
 
     response = agent.handle(Ticket(symptom_or_error_code="E-104", model_number="DM-5400"))
 
@@ -2077,8 +2133,8 @@ def test_handle_escalates_when_confidence_is_below_threshold():
 
 def test_handle_escalates_immediately_for_unknown_model_number():
     retriever = _FakeRetriever([_result(score=0.9)])
-    client = FakeAnthropicClient(reply_text="should not be called")
-    agent = InstrumentSupportAgent(retriever, client, "claude-haiku-4-5", known_model_numbers={"DM-5400"})
+    client = FakeLLMClient(reply_text="should not be called")
+    agent = InstrumentSupportAgent(retriever, client, "gemini-3.8-flash", known_model_numbers={"DM-5400"})
 
     response = agent.handle(Ticket(symptom_or_error_code="E-999", model_number="ZZ-0000"))
 
@@ -2089,8 +2145,8 @@ def test_handle_escalates_immediately_for_unknown_model_number():
 
 def test_handle_with_metadata_reports_latency_and_token_usage():
     retriever = _FakeRetriever([_result(score=0.9)])
-    client = FakeAnthropicClient(reply_text="Purge and refill.", input_tokens=30, output_tokens=12)
-    agent = InstrumentSupportAgent(retriever, client, "claude-haiku-4-5", known_model_numbers={"DM-5400"})
+    client = FakeLLMClient(reply_text="Purge and refill.", input_tokens=30, output_tokens=12)
+    agent = InstrumentSupportAgent(retriever, client, "gemini-3.8-flash", known_model_numbers={"DM-5400"})
 
     response, metadata = agent.handle_with_metadata(Ticket(symptom_or_error_code="E-104", model_number="DM-5400"))
 
@@ -2243,7 +2299,7 @@ EOF
 from core.eval.metrics import hallucination_rate, is_relevant, judge_faithfulness, precision_at_k, recall_at_k
 from core.generation.generate import GroundedAnswer
 from core.ingestion.models import Chunk
-from tests.fakes import FakeAnthropicClient
+from tests.fakes import FakeLLMClient
 
 
 def _chunk(doc_id, section_path):
@@ -2267,9 +2323,15 @@ def test_precision_and_recall_at_k():
 
 
 def test_judge_faithfulness_parses_json_verdict():
-    client = FakeAnthropicClient(reply_text='{"faithful": true}')
+    client = FakeLLMClient(reply_text='{"faithful": true}')
     answer = GroundedAnswer(text="Purge the cell.", citations=[], insufficient=False, input_tokens=1, output_tokens=1)
-    assert judge_faithfulness(answer, [_chunk("DM-5400_manual", "E-104")], client, "claude-haiku-4-5") is True
+    assert judge_faithfulness(answer, [_chunk("DM-5400_manual", "E-104")], client, "gemini-3.8-flash") is True
+
+
+def test_judge_faithfulness_strips_markdown_json_fence():
+    client = FakeLLMClient(reply_text='```json\n{"faithful": true}\n```')
+    answer = GroundedAnswer(text="Purge the cell.", citations=[], insufficient=False, input_tokens=1, output_tokens=1)
+    assert judge_faithfulness(answer, [_chunk("DM-5400_manual", "E-104")], client, "gemini-3.8-flash") is True
 
 
 def test_hallucination_rate_only_counts_out_of_scope_items():
@@ -2324,6 +2386,17 @@ def recall_at_k(retrieved: list[Chunk], correct_sources: list[tuple[str, str]], 
     return len(found) / len(correct_sources)
 
 
+def _strip_json_fence(text: str) -> str:
+    text = text.strip()
+    if text.startswith("```"):
+        text = text.split("\n", 1)[1] if "\n" in text else text
+        if text.endswith("```"):
+            text = text[: -len("```")]
+        if text.startswith("json"):
+            text = text[len("json"):]
+    return text.strip()
+
+
 def judge_faithfulness(answer: GroundedAnswer, cited_chunks: list[Chunk], client, model: str) -> bool:
     excerpts = "\n\n---\n\n".join(c.text for c in cited_chunks)
     user_prompt = f"Excerpts:\n\n{excerpts}\n\nAnswer to grade:\n\n{answer.text}"
@@ -2334,7 +2407,8 @@ def judge_faithfulness(answer: GroundedAnswer, cited_chunks: list[Chunk], client
         messages=[{"role": "user", "content": user_prompt}],
     )
     try:
-        return bool(json.loads(response.content[0].text).get("faithful", False))
+        text = _strip_json_fence(response.content[0].text)
+        return bool(json.loads(text).get("faithful", False))
     except (json.JSONDecodeError, AttributeError):
         return False
 
@@ -2438,7 +2512,7 @@ from core.eval.runner import EvalItem, run_eval
 from core.eval.testset import load_testset
 from core.ingestion.models import Chunk
 from core.retrieval.pipeline import RetrievalResult
-from tests.fakes import FakeAnthropicClient
+from tests.fakes import FakeLLMClient
 
 
 def test_load_testset_returns_40_items_with_tuples(tmp_path):
@@ -2470,10 +2544,10 @@ class _FakeRetriever:
 def test_run_eval_computes_aggregate_metrics():
     chunk = Chunk(chunk_id="c1", text="Air bubble detected.", doc_id="DM-5400_manual", model_number="DM-5400", section_path="Error Codes > E-104", doc_type="manual")
     retriever = _FakeRetriever([chunk])
-    client = FakeAnthropicClient(reply_text='{"faithful": true}')
+    client = FakeLLMClient(reply_text='{"faithful": true}')
 
     items = [EvalItem(query="What does E-104 mean?", correct_sources=[("DM-5400_manual", "E-104")])]
-    result = run_eval(items, retriever, client, "claude-haiku-4-5", "claude-haiku-4-5")
+    result = run_eval(items, retriever, client, "gemini-3.8-flash", "gemini-3.8-flash")
 
     assert result["aggregate"]["precision_at_5"] == 1.0
     assert result["aggregate"]["recall_at_5"] == 1.0
@@ -2593,7 +2667,7 @@ EOF
 - Consumes: `load_testset` (Task 14), `load_chunks`, `CHROMA_DIR`, `COLLECTION_NAME` (Task 10), `BM25OnlyRetriever`, `DenseOnlyRetriever`, `HybridRetriever` (Task 9), `run_eval` (Task 14).
 - Produces: `results.csv`, `results_table.md` at the repo root.
 
-This script calls the real Anthropic API and is not covered by an automated test — Tasks 11-14 already unit-test every function it composes with a fake client.
+This script calls the real Gemini API (free tier, $0 cost) and is not covered by an automated test — Tasks 11-14 already unit-test every function it composes with a fake client.
 
 - [ ] **Step 1: Write `scripts/run_eval.py`**
 
@@ -2601,11 +2675,10 @@ This script calls the real Anthropic API and is not covered by an automated test
 import csv
 from pathlib import Path
 
-import anthropic
-
 from core.config import GENERATION_MODEL, JUDGE_MODEL
 from core.eval.runner import run_eval
 from core.eval.testset import load_testset
+from core.generation.llm_client import GeminiClient
 from core.retrieval.bm25_index import BM25Index
 from core.retrieval.index import DenseIndex
 from core.retrieval.pipeline import BM25OnlyRetriever, DenseOnlyRetriever, HybridRetriever
@@ -2625,7 +2698,7 @@ def main() -> None:
     bm25_index = BM25Index()
     bm25_index.build(chunks)
     reranker = Reranker()
-    client = anthropic.Anthropic()
+    client = GeminiClient()
 
     configs = {
         "bm25_only": BM25OnlyRetriever(bm25_index),
@@ -2668,7 +2741,7 @@ EOF
 )"
 ```
 
-- [ ] **Step 3: Run the ablation against the real corpus and API (requires `ANTHROPIC_API_KEY`)**
+- [ ] **Step 3: Run the ablation against the real corpus and API (requires `GEMINI_API_KEY` or `GOOGLE_API_KEY`)**
 
 ```bash
 python -m scripts.run_eval
@@ -2801,7 +2874,6 @@ Expected: PASS.
 import sqlite3
 import statistics
 
-from core.config import HAIKU_INPUT_COST_PER_MTOK, HAIKU_OUTPUT_COST_PER_MTOK
 from observability.db import DB_PATH
 
 
@@ -2817,10 +2889,8 @@ def main() -> None:
     confidences = [r[0] for r in rows]
     escalations = [r[1] for r in rows]
     latencies = sorted(r[2] for r in rows)
-    total_cost = sum(
-        (r[3] / 1_000_000) * HAIKU_INPUT_COST_PER_MTOK + (r[4] / 1_000_000) * HAIKU_OUTPUT_COST_PER_MTOK
-        for r in rows
-    )
+    total_input_tokens = sum(r[3] for r in rows)
+    total_output_tokens = sum(r[4] for r in rows)
 
     def percentile(sorted_values: list[float], p: float) -> float:
         idx = min(int(len(sorted_values) * p), len(sorted_values) - 1)
@@ -2830,7 +2900,7 @@ def main() -> None:
     print(f"Avg confidence: {statistics.mean(confidences):.3f}")
     print(f"Escalation rate: {sum(escalations) / len(rows):.1%}")
     print(f"Latency p50: {percentile(latencies, 0.5):.0f} ms, p95: {percentile(latencies, 0.95):.0f} ms")
-    print(f"Total estimated cost: ${total_cost:.4f} (avg ${total_cost / len(rows):.5f} per query)")
+    print(f"Total tokens: {total_input_tokens} in / {total_output_tokens} out (Gemini free tier — $0 cost)")
 
 
 if __name__ == "__main__":
@@ -2910,18 +2980,18 @@ Expected: FAIL with `ModuleNotFoundError: No module named 'serving.api'`.
 - [ ] **Step 3: Write `serving/api.py`**
 
 ```python
-import anthropic
 from fastapi import FastAPI
 from pydantic import BaseModel
 
 from core.config import GENERATION_MODEL
+from core.generation.llm_client import GeminiClient
 from domains.instrument_support.agent import InstrumentSupportAgent, Ticket
 from domains.instrument_support.config import KNOWN_MODEL_NUMBERS, build_retriever
 from observability.db import log_request
 
 app = FastAPI()
 
-_client = anthropic.Anthropic()
+_client = GeminiClient()
 _retriever = build_retriever()
 _agent = InstrumentSupportAgent(_retriever, _client, GENERATION_MODEL, KNOWN_MODEL_NUMBERS)
 
@@ -2963,7 +3033,7 @@ def ask(request: TicketRequest) -> TicketResponse:
 pytest tests/test_api.py -v
 ```
 
-Expected: PASS. This test builds the real retriever and Anthropic client at import time (module-level `_retriever = build_retriever()`), so it requires the committed `data/instrument_support_chunks.jsonl` and `data/chroma` from Task 10 and a network connection for the embedding model — the `_agent`/`log_request` are what's monkeypatched, not the retriever construction.
+Expected: PASS. This test builds the real retriever and Gemini client at import time (module-level `_retriever = build_retriever()`), so it requires the committed `data/instrument_support_chunks.jsonl` and `data/chroma` from Task 10 and a network connection for the embedding model — the `_agent`/`log_request` are what's monkeypatched, not the retriever construction.
 
 - [ ] **Step 5: Commit**
 
@@ -3006,10 +3076,10 @@ This is the deployed surface (Streamlit Community Cloud) and embeds the core mod
 - [ ] **Step 1: Write `serving/streamlit_app.py`**
 
 ```python
-import anthropic
 import streamlit as st
 
 from core.config import GENERATION_MODEL
+from core.generation.llm_client import GeminiClient
 from corpus.model_facts import MODELS
 from domains.instrument_support.agent import InstrumentSupportAgent, Ticket
 from domains.instrument_support.config import KNOWN_MODEL_NUMBERS, build_retriever
@@ -3018,7 +3088,7 @@ from observability.db import log_request
 
 @st.cache_resource
 def get_agent() -> InstrumentSupportAgent:
-    client = anthropic.Anthropic()
+    client = GeminiClient()
     retriever = build_retriever()
     return InstrumentSupportAgent(retriever, client, GENERATION_MODEL, KNOWN_MODEL_NUMBERS)
 
@@ -3101,7 +3171,7 @@ Include, at minimum:
 
 1. Push the repository to GitHub (confirm with the user before pushing/creating a remote if one doesn't already exist).
 2. In Streamlit Community Cloud, create a new app pointing at this repo, branch `main`, main file `serving/streamlit_app.py`.
-3. In the app's Secrets, add `ANTHROPIC_API_KEY = "..."` (never commit this value).
+3. In the app's Secrets, add `GEMINI_API_KEY = "..."` (never commit this value).
 4. Deploy and verify the live URL loads and answers a test ticket (e.g. `DM-5400` / `E-104`) the same way the local run did in Task 18.
 5. Add the live URL to `README.md`.
 
@@ -3122,5 +3192,6 @@ EOF
 ## Self-Review Notes
 
 - **Spec coverage:** ingestion/chunking (Tasks 2-4), synthetic corpus + disclosure (Tasks 5-6, 19), hybrid retrieval + reranking (Tasks 7-9), domain-agnostic core + `instrument_support` domain (Tasks 10-12), eval set + metrics + 3-way ablation (Tasks 13-15), observability (Task 16), FastAPI + Streamlit serving with in-process embedding (Tasks 17-18), README + deployment (Task 19) — every section of the design spec has a corresponding task.
-- **Model ID / pricing correction:** the original design conversation referenced `claude-haiku-4-5-20251001`; the current canonical ID (verified via the `claude-api` skill) is `claude-haiku-4-5`, and Sonnet 5 is `claude-sonnet-5` — both are used consistently in `core/config.py` and every task that references a model string.
+- **Model ID correction (original plan):** the initial design conversation referenced `claude-haiku-4-5-20251001`; the corrected canonical ID (verified via the `claude-api` skill) was `claude-haiku-4-5`, with `claude-sonnet-5` for corpus authoring — both were used consistently in `core/config.py` and every task that referenced a model string, at that time.
+- **Provider pivot (during execution, after Task 6):** mid-implementation, the human partner decided to avoid Claude API cost entirely and switch to the Gemini API's free tier instead. This plan was amended in place: `core/generation/llm_client.GeminiClient` was added as a thin adapter preserving the exact `client.messages.create(...) -> response` shape `generate.py`/`metrics.py`/`agent.py` already depend on, `tests.fakes.FakeAnthropicClient` was renamed to `FakeLLMClient`, all three model constants now default to `gemini-3.8-flash`, the `anthropic` dependency became `google-genai`, and the per-token Haiku cost constants were dropped from observability (Gemini's free tier is $0 cost, so token counts are reported instead of a dollar estimate). Tasks 1 and 5 (already implemented at pivot time) went through additional fix rounds to match; verify no task past Task 6 was implemented from a stale (pre-pivot, Anthropic-based) brief before trusting its code.
 - **Type consistency check:** `Chunk`, `Block`/`BlockType`, `RetrievalResult`, `GroundedAnswer`, `Response`, `Ticket`, and `EvalItem` are defined once (Tasks 2, 9, 11, 12, 14) and referenced with identical field names in every later task that consumes them.

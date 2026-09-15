@@ -80,7 +80,7 @@ entirely original content:
 Each model has a manual and a spec sheet; a couple of models also get an
 application report. Roughly 15-20 source documents total.
 
-**Generation process:** content is authored with Claude, then rendered out
+**Generation process:** content is authored with Gemini, then rendered out
 as actual PDF and HTML files (mixed across the corpus, not left as clean
 markdown) so the ingestion pipeline performs genuine PDF/HTML parsing and
 table extraction rather than reading pre-structured text.
@@ -89,7 +89,7 @@ table extraction rather than reading pre-structured text.
 - Tables for calibration specs and unit conversions
 - Multi-step calibration/troubleshooting procedures
 - Overlapping error codes that mean *different* things on different models
-  (e.g., `E-104` is a different failure mode on the DM-4500 vs. the DM-7000)
+  (e.g., `E-104` is a different failure mode on the DM-5400 vs. the DM-8200)
   — this is the case that motivates hybrid search: dense embeddings blur
   the exact code, BM25 alone can't disambiguate which model's manual
   applies without also matching on model number metadata.
@@ -147,8 +147,8 @@ is coarse on its own.
 ## Generation & agent
 
 **Grounded generation:** retrieved chunks (with `doc_id`/`section_path`/
-`model_number` metadata) are assembled into a context block sent to Claude
-Haiku with a strict system prompt: answer only from the provided excerpts,
+`model_number` metadata) are assembled into a context block sent to Gemini
+3.8 Flash (free tier) with a strict system prompt: answer only from the provided excerpts,
 cite each claim as `[doc_id, section]`, explicitly say "insufficient
 information" rather than filling gaps from general knowledge.
 
@@ -181,10 +181,11 @@ cited source chunks, confidence score, and an escalation banner when
 flagged.
 
 **Observability:** every request logged to a local SQLite file: latency
-breakdown (retrieval / rerank / generation), estimated token cost, retrieved
+breakdown (retrieval / rerank / generation), token counts, retrieved
 chunks + scores, final confidence/escalate decision. A
 `scripts/observability_summary.py` prints aggregate stats (p50/p95 latency,
-avg cost per query, escalation rate).
+token usage, escalation rate). Cost is $0 — the project runs entirely on
+the Gemini API's free tier.
 
 **Deployment:** Streamlit Community Cloud. The deployed app embeds the core
 retrieval/generation modules directly in-process (Streamlit calling Python
@@ -192,7 +193,7 @@ functions, not making a network call to a separate FastAPI service), since
 Streamlit Cloud runs a single process. The standalone FastAPI app remains
 documented and runnable for local use. Chroma's persisted index is committed
 to the repo (small, synthetic corpus) so cold starts don't require
-re-embedding. The Anthropic API key is stored in Streamlit's secrets
+re-embedding. The Gemini API key is stored in Streamlit's secrets
 manager, never committed.
 
 ## Evaluation
@@ -212,7 +213,7 @@ correct_section}`.
 
 **Metrics:**
 - Retrieval precision/recall@k (k=3, 5)
-- Faithfulness: LLM-as-judge (separate Claude call) checks whether the
+- Faithfulness: LLM-as-judge (separate Gemini call) checks whether the
   generated answer's claims are supported by the chunks it cited,
   independent of whether the answer is "correct"
 - Hallucination rate on out-of-scope questions: % where the system
@@ -233,13 +234,13 @@ for the README.
 |---|---|---|
 | Language | Python 3.11+ | |
 | Orchestration | Plain Python, no LangChain | Full control over the hybrid retrieval/rerank chain; easier to explain internals; avoids framework overhead at this scale |
-| Corpus generation | Claude API (content) → rendered to PDF/HTML | Keeps ingestion demonstrating real parsing work despite synthetic content |
+| Corpus generation | Gemini API, free tier (content) → rendered to PDF/HTML | Keeps ingestion demonstrating real parsing work despite synthetic content, at zero cost |
 | PDF/HTML parsing | `pdfplumber`, `BeautifulSoup` | |
 | Dense embeddings | `sentence-transformers/all-MiniLM-L6-v2` (local) | Free, no extra API key, reproducible |
 | Keyword search | `rank_bm25` | |
 | Reranker | `cross-encoder/ms-marco-MiniLM-L-6-v2` (local) | Free, standard baseline |
 | Vector DB | Chroma | File-based persistence, no external service, fits Streamlit Cloud |
-| Generation LLM | Claude Haiku (Anthropic API) | Cheap, strong instruction-following for strict grounding |
+| Generation LLM | Gemini 3.8 Flash (Gemini API, free tier) | Zero cost, strong instruction-following for strict grounding |
 | Serving | FastAPI (standalone) + Streamlit (deployed, embeds core directly) | |
 | Eval | `pytest` + plain metric functions | |
 | Observability | SQLite request log + summary script | |
