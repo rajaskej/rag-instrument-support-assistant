@@ -732,14 +732,14 @@ EOF
 - Consumes: `core.config.CORPUS_GEN_MODEL`, `tests.fakes.FakeAnthropicClient`.
 - Produces: `corpus.model_facts.MODELS` (list of dicts — ground truth used again by Task 6's renderer and Task 13's eval test set), `corpus.generate_corpus.generate_doc(client, prompt) -> str`, `main()`.
 
-This task defines the 6 fictional instruments (3 density meters, 3 rheometers) with their specs, error codes, and calibration steps — the single source of ground truth for both the corpus content and the eval test set. It deliberately includes error code `E-104` meaning different things on the DM-4500 ("air bubble in the density cell") and DM-7000 ("Peltier temperature control fault") — the retrieval-hard case the design calls for.
+This task defines the 6 fictional instruments (3 density meters, 3 rheometers) with their specs, error codes, and calibration steps — the single source of ground truth for both the corpus content and the eval test set. It deliberately includes error code `E-104` meaning different things on the DM-5400 ("air bubble in the density cell") and DM-8200 ("Peltier temperature control fault") — the retrieval-hard case the design calls for.
 
 - [ ] **Step 1: Write `corpus/model_facts.py`**
 
 ```python
 MODELS = [
     {
-        "model_number": "DM-2100",
+        "model_number": "DM-2600",
         "family": "density_meter",
         "tagline": "entry-level benchtop density meter",
         "density_range": "0 to 3 g/cm3",
@@ -760,7 +760,7 @@ MODELS = [
         "symptoms": [("Reading drifts upward slowly during a measurement", "E-201")],
     },
     {
-        "model_number": "DM-4500",
+        "model_number": "DM-5400",
         "family": "density_meter",
         "tagline": "mid-range density meter with viscosity correction",
         "density_range": "0 to 3 g/cm3",
@@ -783,12 +783,12 @@ MODELS = [
         ],
         "symptoms": [("Reading is unstable and drifts erratically mid-measurement", "E-104")],
         "app_report": {
-            "title": "Measuring Density of High-Viscosity Polymer Melts with the DM-4500",
+            "title": "Measuring Density of High-Viscosity Polymer Melts with the DM-5400",
             "focus": "using the built-in viscosity correction to measure polymer melt density accurately above 2000 mPa.s",
         },
     },
     {
-        "model_number": "DM-7000",
+        "model_number": "DM-8200",
         "family": "density_meter",
         "tagline": "high-end automated density meter with sample changer",
         "density_range": "0 to 3 g/cm3",
@@ -810,12 +810,12 @@ MODELS = [
         ],
         "symptoms": [("Instrument stops mid-run with the carousel motor still audible", "E-402")],
         "app_report": {
-            "title": "High-Throughput QC Density Screening with the DM-7000 Automated Sample Changer",
+            "title": "High-Throughput QC Density Screening with the DM-8200 Automated Sample Changer",
             "focus": "using the automated sample changer to screen 50+ samples per shift in a QC lab",
         },
     },
     {
-        "model_number": "RH-150",
+        "model_number": "RH-220",
         "family": "rheometer",
         "tagline": "entry-level rotational rheometer",
         "torque_range": "0.1 to 150 mNm",
@@ -835,7 +835,7 @@ MODELS = [
         "symptoms": [("Torque reading pins at maximum immediately on startup", "E-501")],
     },
     {
-        "model_number": "RH-350",
+        "model_number": "RH-540",
         "family": "rheometer",
         "tagline": "mid-range rheometer with Peltier temperature control",
         "torque_range": "0.05 to 200 mNm",
@@ -857,12 +857,12 @@ MODELS = [
         ],
         "symptoms": [("Normal force reading does not return to zero when the geometry is lifted clear of the sample", "E-602")],
         "app_report": {
-            "title": "Characterizing Viscoelastic Behavior of Adhesives with the RH-350",
+            "title": "Characterizing Viscoelastic Behavior of Adhesives with the RH-540",
             "focus": "using oscillatory amplitude sweeps on the Peltier plate to characterize cure behavior of adhesives",
         },
     },
     {
-        "model_number": "RH-900",
+        "model_number": "RH-870",
         "family": "rheometer",
         "tagline": "high-end rheometer for oscillatory and rotational testing",
         "torque_range": "0.01 to 300 mNm",
@@ -885,7 +885,7 @@ MODELS = [
         ],
         "symptoms": [("Oscillation test aborts immediately when a high frequency sweep is requested", "E-801")],
         "app_report": {
-            "title": "Frequency Sweep Analysis of Thermoplastics with the RH-900",
+            "title": "Frequency Sweep Analysis of Thermoplastics with the RH-870",
             "focus": "using extended-bandwidth oscillatory frequency sweeps to map the viscoelastic spectrum of thermoplastics",
         },
     },
@@ -1269,13 +1269,13 @@ def test_dense_index_returns_semantically_closest_chunk_first(tmp_path):
 
 def test_dense_index_preserves_metadata(tmp_path):
     index = DenseIndex(collection_name="test2", persist_dir=str(tmp_path))
-    index.add([_chunk("c1", "Some text", doc_id="doc42", model_number="RH-900")])
+    index.add([_chunk("c1", "Some text", doc_id="doc42", model_number="RH-870")])
 
     results = index.query("Some text", top_k=1)
 
     chunk = results[0][0]
     assert chunk.doc_id == "doc42"
-    assert chunk.model_number == "RH-900"
+    assert chunk.model_number == "RH-870"
     assert chunk.section_path == "Overview"
     assert chunk.doc_type == "manual"
 ```
@@ -1384,7 +1384,7 @@ from core.retrieval.bm25_index import BM25Index
 
 
 def _chunk(chunk_id, text):
-    return Chunk(chunk_id=chunk_id, text=text, doc_id="doc1", model_number="DM-4500", section_path="Error Codes > E-104", doc_type="manual")
+    return Chunk(chunk_id=chunk_id, text=text, doc_id="doc1", model_number="DM-5400", section_path="Error Codes > E-104", doc_type="manual")
 
 
 def test_bm25_finds_exact_error_code_match():
@@ -1489,7 +1489,7 @@ from core.retrieval.pipeline import BM25OnlyRetriever, DenseOnlyRetriever, Hybri
 from core.retrieval.rerank import Reranker
 
 
-def _chunk(chunk_id, text, model_number="DM-4500"):
+def _chunk(chunk_id, text, model_number="DM-5400"):
     return Chunk(chunk_id=chunk_id, text=text, doc_id="doc1", model_number=model_number, section_path="Error Codes > E-104", doc_type="manual")
 
 
@@ -1515,17 +1515,17 @@ def test_reranker_orders_by_relevance_to_query():
 def test_hybrid_retriever_filters_by_model_number(tmp_path):
     dense = DenseIndex(collection_name="hybrid_test", persist_dir=str(tmp_path))
     chunks = [
-        _chunk("dm4500", "Error E-104: air bubble detected in the density cell.", model_number="DM-4500"),
-        _chunk("dm7000", "Error E-104: Peltier temperature control fault.", model_number="DM-7000"),
+        _chunk("dm4500", "Error E-104: air bubble detected in the density cell.", model_number="DM-5400"),
+        _chunk("dm7000", "Error E-104: Peltier temperature control fault.", model_number="DM-8200"),
     ]
     dense.add(chunks)
     bm25 = BM25Index()
     bm25.build(chunks)
 
     retriever = HybridRetriever(dense, bm25, reranker=Reranker())
-    results = retriever.retrieve("What does E-104 mean?", top_k=2, model_number_filter="DM-7000")
+    results = retriever.retrieve("What does E-104 mean?", top_k=2, model_number_filter="DM-8200")
 
-    assert all(r.chunk.model_number == "DM-7000" for r in results)
+    assert all(r.chunk.model_number == "DM-8200" for r in results)
     assert 0.0 < results[0].score < 1.0
 
 
@@ -1707,10 +1707,10 @@ from scripts.build_index import _doc_id_and_type, build_chunks
 
 
 def test_doc_id_and_type_parses_filename_convention():
-    doc_id, doc_type, model_number = _doc_id_and_type(Path("DM-4500_manual.pdf"))
-    assert doc_id == "DM-4500_manual"
+    doc_id, doc_type, model_number = _doc_id_and_type(Path("DM-5400_manual.pdf"))
+    assert doc_id == "DM-5400_manual"
     assert doc_type == "manual"
-    assert model_number == "DM-4500"
+    assert model_number == "DM-5400"
 
 
 def test_doc_id_and_type_handles_unknown_model_number():
@@ -1726,18 +1726,18 @@ def test_build_chunks_walks_a_directory_of_mixed_pdf_and_html(tmp_path, monkeypa
 
     manual_md = tmp_path / "manual.md"
     manual_md.write_text("# Overview\n\nSome overview text.\n")
-    render_to_pdf(manual_md, corpus_dir / "DM-2100_manual.pdf")
+    render_to_pdf(manual_md, corpus_dir / "DM-2600_manual.pdf")
 
     spec_md = tmp_path / "spec.md"
     spec_md.write_text("# Specifications\n\n| A | B |\n| --- | --- |\n| 1 | 2 |\n")
-    render_to_html(spec_md, corpus_dir / "DM-2100_spec_sheet.html")
+    render_to_html(spec_md, corpus_dir / "DM-2600_spec_sheet.html")
 
     monkeypatch.setattr(bi, "CORPUS_DIR", tmp_path / "rendered")
 
     chunks = build_chunks()
 
-    assert any(c.doc_id == "DM-2100_manual" and c.model_number == "DM-2100" for c in chunks)
-    assert any(c.doc_id == "DM-2100_spec_sheet" and c.doc_type == "spec_sheet" for c in chunks)
+    assert any(c.doc_id == "DM-2600_manual" and c.model_number == "DM-2600" for c in chunks)
+    assert any(c.doc_id == "DM-2600_spec_sheet" and c.doc_type == "spec_sheet" for c in chunks)
 ```
 
 - [ ] **Step 2: Run tests to verify they fail**
@@ -1903,27 +1903,27 @@ from core.retrieval.pipeline import RetrievalResult
 from tests.fakes import FakeAnthropicClient
 
 
-def _result(text, doc_id="DM-4500_manual", section_path="Error Codes > E-104"):
-    chunk = Chunk(chunk_id="c1", text=text, doc_id=doc_id, model_number="DM-4500", section_path=section_path, doc_type="manual")
+def _result(text, doc_id="DM-5400_manual", section_path="Error Codes > E-104"):
+    chunk = Chunk(chunk_id="c1", text=text, doc_id=doc_id, model_number="DM-5400", section_path=section_path, doc_type="manual")
     return RetrievalResult(chunk=chunk, score=0.9)
 
 
 def test_build_context_block_includes_doc_id_and_section():
     block = build_context_block([_result("Air bubble detected.")])
-    assert "DM-4500_manual" in block
+    assert "DM-5400_manual" in block
     assert "Error Codes > E-104" in block
     assert "Air bubble detected." in block
 
 
 def test_generate_grounded_answer_extracts_citations_and_usage():
     client = FakeAnthropicClient(
-        reply_text="Purge the cell and refill slowly. [DM-4500_manual, Error Codes > E-104]",
+        reply_text="Purge the cell and refill slowly. [DM-5400_manual, Error Codes > E-104]",
         input_tokens=42,
         output_tokens=17,
     )
     answer = generate_grounded_answer("What does E-104 mean?", [_result("Air bubble detected.")], client, "claude-haiku-4-5")
 
-    assert "DM-4500_manual, Error Codes > E-104" in answer.citations
+    assert "DM-5400_manual, Error Codes > E-104" in answer.citations
     assert answer.insufficient is False
     assert answer.input_tokens == 42
     assert answer.output_tokens == 17
@@ -2048,29 +2048,29 @@ class _FakeRetriever:
         return self._results
 
 
-def _result(score, doc_id="DM-4500_manual", section_path="Error Codes > E-104"):
-    chunk = Chunk(chunk_id="c1", text="Air bubble detected.", doc_id=doc_id, model_number="DM-4500", section_path=section_path, doc_type="manual")
+def _result(score, doc_id="DM-5400_manual", section_path="Error Codes > E-104"):
+    chunk = Chunk(chunk_id="c1", text="Air bubble detected.", doc_id=doc_id, model_number="DM-5400", section_path=section_path, doc_type="manual")
     return RetrievalResult(chunk=chunk, score=score)
 
 
 def test_handle_returns_grounded_answer_when_confidence_is_high():
     retriever = _FakeRetriever([_result(score=0.9)])
-    client = FakeAnthropicClient(reply_text="Purge and refill. [DM-4500_manual, Error Codes > E-104]")
-    agent = InstrumentSupportAgent(retriever, client, "claude-haiku-4-5", known_model_numbers={"DM-4500"})
+    client = FakeAnthropicClient(reply_text="Purge and refill. [DM-5400_manual, Error Codes > E-104]")
+    agent = InstrumentSupportAgent(retriever, client, "claude-haiku-4-5", known_model_numbers={"DM-5400"})
 
-    response = agent.handle(Ticket(symptom_or_error_code="E-104", model_number="DM-4500"))
+    response = agent.handle(Ticket(symptom_or_error_code="E-104", model_number="DM-5400"))
 
     assert response.escalate is False
     assert response.confidence == 0.9
-    assert "DM-4500_manual, Error Codes > E-104" in response.citations
+    assert "DM-5400_manual, Error Codes > E-104" in response.citations
 
 
 def test_handle_escalates_when_confidence_is_below_threshold():
     retriever = _FakeRetriever([_result(score=0.1)])
-    client = FakeAnthropicClient(reply_text="Purge and refill. [DM-4500_manual, Error Codes > E-104]")
-    agent = InstrumentSupportAgent(retriever, client, "claude-haiku-4-5", known_model_numbers={"DM-4500"}, confidence_threshold=0.4)
+    client = FakeAnthropicClient(reply_text="Purge and refill. [DM-5400_manual, Error Codes > E-104]")
+    agent = InstrumentSupportAgent(retriever, client, "claude-haiku-4-5", known_model_numbers={"DM-5400"}, confidence_threshold=0.4)
 
-    response = agent.handle(Ticket(symptom_or_error_code="E-104", model_number="DM-4500"))
+    response = agent.handle(Ticket(symptom_or_error_code="E-104", model_number="DM-5400"))
 
     assert response.escalate is True
 
@@ -2078,7 +2078,7 @@ def test_handle_escalates_when_confidence_is_below_threshold():
 def test_handle_escalates_immediately_for_unknown_model_number():
     retriever = _FakeRetriever([_result(score=0.9)])
     client = FakeAnthropicClient(reply_text="should not be called")
-    agent = InstrumentSupportAgent(retriever, client, "claude-haiku-4-5", known_model_numbers={"DM-4500"})
+    agent = InstrumentSupportAgent(retriever, client, "claude-haiku-4-5", known_model_numbers={"DM-5400"})
 
     response = agent.handle(Ticket(symptom_or_error_code="E-999", model_number="ZZ-0000"))
 
@@ -2090,9 +2090,9 @@ def test_handle_escalates_immediately_for_unknown_model_number():
 def test_handle_with_metadata_reports_latency_and_token_usage():
     retriever = _FakeRetriever([_result(score=0.9)])
     client = FakeAnthropicClient(reply_text="Purge and refill.", input_tokens=30, output_tokens=12)
-    agent = InstrumentSupportAgent(retriever, client, "claude-haiku-4-5", known_model_numbers={"DM-4500"})
+    agent = InstrumentSupportAgent(retriever, client, "claude-haiku-4-5", known_model_numbers={"DM-5400"})
 
-    response, metadata = agent.handle_with_metadata(Ticket(symptom_or_error_code="E-104", model_number="DM-4500"))
+    response, metadata = agent.handle_with_metadata(Ticket(symptom_or_error_code="E-104", model_number="DM-5400"))
 
     assert metadata["input_tokens"] == 30
     assert metadata["output_tokens"] == 12
@@ -2251,15 +2251,15 @@ def _chunk(doc_id, section_path):
 
 
 def test_is_relevant_matches_doc_id_and_section_substring():
-    chunk = _chunk("DM-4500_manual", "Error Codes > E-104")
-    assert is_relevant(chunk, "DM-4500_manual", "E-104") is True
-    assert is_relevant(chunk, "DM-4500_manual", "E-999") is False
-    assert is_relevant(chunk, "DM-7000_manual", "E-104") is False
+    chunk = _chunk("DM-5400_manual", "Error Codes > E-104")
+    assert is_relevant(chunk, "DM-5400_manual", "E-104") is True
+    assert is_relevant(chunk, "DM-5400_manual", "E-999") is False
+    assert is_relevant(chunk, "DM-8200_manual", "E-104") is False
 
 
 def test_precision_and_recall_at_k():
-    retrieved = [_chunk("DM-4500_manual", "Error Codes > E-104"), _chunk("DM-4500_manual", "Overview")]
-    correct = [("DM-4500_manual", "E-104")]
+    retrieved = [_chunk("DM-5400_manual", "Error Codes > E-104"), _chunk("DM-5400_manual", "Overview")]
+    correct = [("DM-5400_manual", "E-104")]
 
     assert precision_at_k(retrieved, correct, k=2) == 0.5
     assert recall_at_k(retrieved, correct, k=2) == 1.0
@@ -2269,7 +2269,7 @@ def test_precision_and_recall_at_k():
 def test_judge_faithfulness_parses_json_verdict():
     client = FakeAnthropicClient(reply_text='{"faithful": true}')
     answer = GroundedAnswer(text="Purge the cell.", citations=[], insufficient=False, input_tokens=1, output_tokens=1)
-    assert judge_faithfulness(answer, [_chunk("DM-4500_manual", "E-104")], client, "claude-haiku-4-5") is True
+    assert judge_faithfulness(answer, [_chunk("DM-5400_manual", "E-104")], client, "claude-haiku-4-5") is True
 
 
 def test_hallucination_rate_only_counts_out_of_scope_items():
@@ -2385,46 +2385,46 @@ EOF
 
 ```json
 [
-  {"query": "What is the density measurement range of the DM-2100?", "correct_sources": [["DM-2100_spec_sheet", "Specifications"]], "out_of_scope": false, "tag": "straightforward"},
-  {"query": "What does error code E-101 mean on the DM-2100?", "correct_sources": [["DM-2100_manual", "Error Codes > E-101"]], "out_of_scope": false, "tag": "straightforward"},
-  {"query": "How many calibration reference points does the DM-2100 use during calibration?", "correct_sources": [["DM-2100_manual", "Calibration Procedure"]], "out_of_scope": false, "tag": "straightforward"},
-  {"query": "What should I do if the DM-2100 shows a temperature stabilization timeout?", "correct_sources": [["DM-2100_manual", "Error Codes > E-201"]], "out_of_scope": false, "tag": "straightforward"},
-  {"query": "What is the accuracy of the DM-4500?", "correct_sources": [["DM-4500_spec_sheet", "Specifications"]], "out_of_scope": false, "tag": "straightforward"},
-  {"query": "What does error E-104 mean on the DM-4500?", "correct_sources": [["DM-4500_manual", "Error Codes > E-104"]], "out_of_scope": false, "tag": "collision"},
-  {"query": "What is the sample volume required by the DM-4500?", "correct_sources": [["DM-4500_spec_sheet", "Specifications"]], "out_of_scope": false, "tag": "straightforward"},
-  {"query": "What should I do if the DM-4500 reports a viscosity correction sensor fault?", "correct_sources": [["DM-4500_manual", "Error Codes > E-301"]], "out_of_scope": false, "tag": "straightforward"},
-  {"query": "What temperature range does the DM-7000 support?", "correct_sources": [["DM-7000_spec_sheet", "Specifications"]], "out_of_scope": false, "tag": "straightforward"},
-  {"query": "What does error E-104 mean on the DM-7000?", "correct_sources": [["DM-7000_manual", "Error Codes > E-104"]], "out_of_scope": false, "tag": "collision"},
-  {"query": "How do I resolve a sample changer jam, error E-402, on the DM-7000?", "correct_sources": [["DM-7000_manual", "Error Codes > E-402"]], "out_of_scope": false, "tag": "straightforward"},
-  {"query": "How many reference standards does the DM-7000's automated calibration routine use?", "correct_sources": [["DM-7000_manual", "Calibration Procedure"]], "out_of_scope": false, "tag": "straightforward"},
-  {"query": "What is the torque range of the RH-150?", "correct_sources": [["RH-150_spec_sheet", "Specifications"]], "out_of_scope": false, "tag": "straightforward"},
-  {"query": "What does error E-501 mean on the RH-150?", "correct_sources": [["RH-150_manual", "Error Codes > E-501"]], "out_of_scope": false, "tag": "straightforward"},
-  {"query": "What should I do if the RH-150 needs a gap calibration, error E-601?", "correct_sources": [["RH-150_manual", "Error Codes > E-601"]], "out_of_scope": false, "tag": "straightforward"},
-  {"query": "Does the RH-150 have active temperature control?", "correct_sources": [["RH-150_spec_sheet", "Specifications"]], "out_of_scope": false, "tag": "straightforward"},
-  {"query": "What temperature range can the RH-350's Peltier plate reach?", "correct_sources": [["RH-350_spec_sheet", "Specifications"]], "out_of_scope": false, "tag": "straightforward"},
-  {"query": "What does error E-602 mean on the RH-350?", "correct_sources": [["RH-350_manual", "Error Codes > E-602"]], "out_of_scope": false, "tag": "straightforward"},
-  {"query": "How do I resolve a Peltier plate overtemperature, error E-701, on the RH-350?", "correct_sources": [["RH-350_manual", "Error Codes > E-701"]], "out_of_scope": false, "tag": "straightforward"},
-  {"query": "What is the torque range of the RH-350?", "correct_sources": [["RH-350_spec_sheet", "Specifications"]], "out_of_scope": false, "tag": "straightforward"},
-  {"query": "What does error E-801 mean on the RH-900?", "correct_sources": [["RH-900_manual", "Error Codes > E-801"]], "out_of_scope": false, "tag": "straightforward"},
-  {"query": "What is the maximum rotational speed of the RH-900?", "correct_sources": [["RH-900_spec_sheet", "Specifications"]], "out_of_scope": false, "tag": "straightforward"},
-  {"query": "How do I resolve a normal force sensor drift, error E-602, on the RH-900?", "correct_sources": [["RH-900_manual", "Error Codes > E-602"]], "out_of_scope": false, "tag": "straightforward"},
-  {"query": "What is the minimum operating temperature of the RH-900?", "correct_sources": [["RH-900_spec_sheet", "Specifications"]], "out_of_scope": false, "tag": "straightforward"},
-  {"query": "The DM-2100 reading drifts upward slowly during a measurement, what's wrong?", "correct_sources": [["DM-2100_manual", "Troubleshooting"], ["DM-2100_manual", "Error Codes > E-201"]], "out_of_scope": false, "tag": "symptom_two_hop"},
-  {"query": "On the DM-4500, the reading is unstable and drifts erratically mid-measurement. What should I check?", "correct_sources": [["DM-4500_manual", "Troubleshooting"], ["DM-4500_manual", "Error Codes > E-104"]], "out_of_scope": false, "tag": "symptom_two_hop"},
-  {"query": "The DM-7000 stops mid-run with the carousel motor still audible. What's happening?", "correct_sources": [["DM-7000_manual", "Troubleshooting"], ["DM-7000_manual", "Error Codes > E-402"]], "out_of_scope": false, "tag": "symptom_two_hop"},
-  {"query": "On the RH-150, the torque reading pins at maximum immediately on startup. What does that indicate?", "correct_sources": [["RH-150_manual", "Troubleshooting"], ["RH-150_manual", "Error Codes > E-501"]], "out_of_scope": false, "tag": "symptom_two_hop"},
-  {"query": "The RH-350's normal force reading does not return to zero when the geometry is lifted clear of the sample. What should I do?", "correct_sources": [["RH-350_manual", "Troubleshooting"], ["RH-350_manual", "Error Codes > E-602"]], "out_of_scope": false, "tag": "symptom_two_hop"},
-  {"query": "The RH-900 aborts an oscillation test immediately when a high frequency sweep is requested. Why?", "correct_sources": [["RH-900_manual", "Troubleshooting"], ["RH-900_manual", "Error Codes > E-801"]], "out_of_scope": false, "tag": "symptom_two_hop"},
+  {"query": "What is the density measurement range of the DM-2600?", "correct_sources": [["DM-2600_spec_sheet", "Specifications"]], "out_of_scope": false, "tag": "straightforward"},
+  {"query": "What does error code E-101 mean on the DM-2600?", "correct_sources": [["DM-2600_manual", "Error Codes > E-101"]], "out_of_scope": false, "tag": "straightforward"},
+  {"query": "How many calibration reference points does the DM-2600 use during calibration?", "correct_sources": [["DM-2600_manual", "Calibration Procedure"]], "out_of_scope": false, "tag": "straightforward"},
+  {"query": "What should I do if the DM-2600 shows a temperature stabilization timeout?", "correct_sources": [["DM-2600_manual", "Error Codes > E-201"]], "out_of_scope": false, "tag": "straightforward"},
+  {"query": "What is the accuracy of the DM-5400?", "correct_sources": [["DM-5400_spec_sheet", "Specifications"]], "out_of_scope": false, "tag": "straightforward"},
+  {"query": "What does error E-104 mean on the DM-5400?", "correct_sources": [["DM-5400_manual", "Error Codes > E-104"]], "out_of_scope": false, "tag": "collision"},
+  {"query": "What is the sample volume required by the DM-5400?", "correct_sources": [["DM-5400_spec_sheet", "Specifications"]], "out_of_scope": false, "tag": "straightforward"},
+  {"query": "What should I do if the DM-5400 reports a viscosity correction sensor fault?", "correct_sources": [["DM-5400_manual", "Error Codes > E-301"]], "out_of_scope": false, "tag": "straightforward"},
+  {"query": "What temperature range does the DM-8200 support?", "correct_sources": [["DM-8200_spec_sheet", "Specifications"]], "out_of_scope": false, "tag": "straightforward"},
+  {"query": "What does error E-104 mean on the DM-8200?", "correct_sources": [["DM-8200_manual", "Error Codes > E-104"]], "out_of_scope": false, "tag": "collision"},
+  {"query": "How do I resolve a sample changer jam, error E-402, on the DM-8200?", "correct_sources": [["DM-8200_manual", "Error Codes > E-402"]], "out_of_scope": false, "tag": "straightforward"},
+  {"query": "How many reference standards does the DM-8200's automated calibration routine use?", "correct_sources": [["DM-8200_manual", "Calibration Procedure"]], "out_of_scope": false, "tag": "straightforward"},
+  {"query": "What is the torque range of the RH-220?", "correct_sources": [["RH-220_spec_sheet", "Specifications"]], "out_of_scope": false, "tag": "straightforward"},
+  {"query": "What does error E-501 mean on the RH-220?", "correct_sources": [["RH-220_manual", "Error Codes > E-501"]], "out_of_scope": false, "tag": "straightforward"},
+  {"query": "What should I do if the RH-220 needs a gap calibration, error E-601?", "correct_sources": [["RH-220_manual", "Error Codes > E-601"]], "out_of_scope": false, "tag": "straightforward"},
+  {"query": "Does the RH-220 have active temperature control?", "correct_sources": [["RH-220_spec_sheet", "Specifications"]], "out_of_scope": false, "tag": "straightforward"},
+  {"query": "What temperature range can the RH-540's Peltier plate reach?", "correct_sources": [["RH-540_spec_sheet", "Specifications"]], "out_of_scope": false, "tag": "straightforward"},
+  {"query": "What does error E-602 mean on the RH-540?", "correct_sources": [["RH-540_manual", "Error Codes > E-602"]], "out_of_scope": false, "tag": "straightforward"},
+  {"query": "How do I resolve a Peltier plate overtemperature, error E-701, on the RH-540?", "correct_sources": [["RH-540_manual", "Error Codes > E-701"]], "out_of_scope": false, "tag": "straightforward"},
+  {"query": "What is the torque range of the RH-540?", "correct_sources": [["RH-540_spec_sheet", "Specifications"]], "out_of_scope": false, "tag": "straightforward"},
+  {"query": "What does error E-801 mean on the RH-870?", "correct_sources": [["RH-870_manual", "Error Codes > E-801"]], "out_of_scope": false, "tag": "straightforward"},
+  {"query": "What is the maximum rotational speed of the RH-870?", "correct_sources": [["RH-870_spec_sheet", "Specifications"]], "out_of_scope": false, "tag": "straightforward"},
+  {"query": "How do I resolve a normal force sensor drift, error E-602, on the RH-870?", "correct_sources": [["RH-870_manual", "Error Codes > E-602"]], "out_of_scope": false, "tag": "straightforward"},
+  {"query": "What is the minimum operating temperature of the RH-870?", "correct_sources": [["RH-870_spec_sheet", "Specifications"]], "out_of_scope": false, "tag": "straightforward"},
+  {"query": "The DM-2600 reading drifts upward slowly during a measurement, what's wrong?", "correct_sources": [["DM-2600_manual", "Troubleshooting"], ["DM-2600_manual", "Error Codes > E-201"]], "out_of_scope": false, "tag": "symptom_two_hop"},
+  {"query": "On the DM-5400, the reading is unstable and drifts erratically mid-measurement. What should I check?", "correct_sources": [["DM-5400_manual", "Troubleshooting"], ["DM-5400_manual", "Error Codes > E-104"]], "out_of_scope": false, "tag": "symptom_two_hop"},
+  {"query": "The DM-8200 stops mid-run with the carousel motor still audible. What's happening?", "correct_sources": [["DM-8200_manual", "Troubleshooting"], ["DM-8200_manual", "Error Codes > E-402"]], "out_of_scope": false, "tag": "symptom_two_hop"},
+  {"query": "On the RH-220, the torque reading pins at maximum immediately on startup. What does that indicate?", "correct_sources": [["RH-220_manual", "Troubleshooting"], ["RH-220_manual", "Error Codes > E-501"]], "out_of_scope": false, "tag": "symptom_two_hop"},
+  {"query": "The RH-540's normal force reading does not return to zero when the geometry is lifted clear of the sample. What should I do?", "correct_sources": [["RH-540_manual", "Troubleshooting"], ["RH-540_manual", "Error Codes > E-602"]], "out_of_scope": false, "tag": "symptom_two_hop"},
+  {"query": "The RH-870 aborts an oscillation test immediately when a high frequency sweep is requested. Why?", "correct_sources": [["RH-870_manual", "Troubleshooting"], ["RH-870_manual", "Error Codes > E-801"]], "out_of_scope": false, "tag": "symptom_two_hop"},
   {"query": "What is the density range of the DM-9999?", "correct_sources": [], "out_of_scope": true, "tag": "out_of_scope"},
   {"query": "Does this instrument line make a viscosity meter called the VM-100?", "correct_sources": [], "out_of_scope": true, "tag": "out_of_scope"},
   {"query": "What does error code E-999 mean?", "correct_sources": [], "out_of_scope": true, "tag": "out_of_scope"},
-  {"query": "Can the RH-150 measure density directly?", "correct_sources": [], "out_of_scope": true, "tag": "out_of_scope"},
-  {"query": "What is the warranty period for the DM-4500?", "correct_sources": [], "out_of_scope": true, "tag": "out_of_scope"},
-  {"query": "How do I connect the DM-7000 to a LIMS system via its REST API?", "correct_sources": [], "out_of_scope": true, "tag": "out_of_scope"},
+  {"query": "Can the RH-220 measure density directly?", "correct_sources": [], "out_of_scope": true, "tag": "out_of_scope"},
+  {"query": "What is the warranty period for the DM-5400?", "correct_sources": [], "out_of_scope": true, "tag": "out_of_scope"},
+  {"query": "How do I connect the DM-8200 to a LIMS system via its REST API?", "correct_sources": [], "out_of_scope": true, "tag": "out_of_scope"},
   {"query": "What is the calibration procedure for the RH-2000?", "correct_sources": [], "out_of_scope": true, "tag": "out_of_scope"},
-  {"query": "Does the DM-2100 support Bluetooth connectivity?", "correct_sources": [], "out_of_scope": true, "tag": "out_of_scope"},
-  {"query": "What is the list price of the RH-900?", "correct_sources": [], "out_of_scope": true, "tag": "out_of_scope"},
-  {"query": "What does error code E-150 mean on the RH-350?", "correct_sources": [], "out_of_scope": true, "tag": "out_of_scope"}
+  {"query": "Does the DM-2600 support Bluetooth connectivity?", "correct_sources": [], "out_of_scope": true, "tag": "out_of_scope"},
+  {"query": "What is the list price of the RH-870?", "correct_sources": [], "out_of_scope": true, "tag": "out_of_scope"},
+  {"query": "What does error code E-150 mean on the RH-540?", "correct_sources": [], "out_of_scope": true, "tag": "out_of_scope"}
 ]
 ```
 
@@ -2468,11 +2468,11 @@ class _FakeRetriever:
 
 
 def test_run_eval_computes_aggregate_metrics():
-    chunk = Chunk(chunk_id="c1", text="Air bubble detected.", doc_id="DM-4500_manual", model_number="DM-4500", section_path="Error Codes > E-104", doc_type="manual")
+    chunk = Chunk(chunk_id="c1", text="Air bubble detected.", doc_id="DM-5400_manual", model_number="DM-5400", section_path="Error Codes > E-104", doc_type="manual")
     retriever = _FakeRetriever([chunk])
     client = FakeAnthropicClient(reply_text='{"faithful": true}')
 
-    items = [EvalItem(query="What does E-104 mean?", correct_sources=[("DM-4500_manual", "E-104")])]
+    items = [EvalItem(query="What does E-104 mean?", correct_sources=[("DM-5400_manual", "E-104")])]
     result = run_eval(items, retriever, client, "claude-haiku-4-5", "claude-haiku-4-5")
 
     assert result["aggregate"]["precision_at_5"] == 1.0
@@ -2873,7 +2873,7 @@ from domains.base import Response
 
 class _FakeAgent:
     def handle_with_metadata(self, ticket):
-        response = Response(draft="Purge and refill.", citations=["DM-4500_manual, E-104"], confidence=0.9, escalate=False)
+        response = Response(draft="Purge and refill.", citations=["DM-5400_manual, E-104"], confidence=0.9, escalate=False)
         return response, {"latency_ms": 10.0, "input_tokens": 5, "output_tokens": 5}
 
 
@@ -2890,7 +2890,7 @@ def test_ticket_endpoint_returns_agent_response(monkeypatch):
     monkeypatch.setattr(api_module, "log_request", lambda *a, **kw: None)
 
     client = TestClient(api_module.app)
-    resp = client.post("/ticket", json={"symptom_or_error_code": "E-104", "model_number": "DM-4500"})
+    resp = client.post("/ticket", json={"symptom_or_error_code": "E-104", "model_number": "DM-5400"})
 
     assert resp.status_code == 200
     body = resp.json()
@@ -2986,10 +2986,10 @@ uvicorn serving.api:app --reload
 In another terminal:
 
 ```bash
-curl -X POST http://localhost:8000/ticket -H "Content-Type: application/json" -d '{"symptom_or_error_code": "E-104", "model_number": "DM-4500"}'
+curl -X POST http://localhost:8000/ticket -H "Content-Type: application/json" -d '{"symptom_or_error_code": "E-104", "model_number": "DM-5400"}'
 ```
 
-Expected: JSON response with a `draft` mentioning purging an air bubble, `escalate: false`, and a citation referencing `DM-4500_manual`. Stop the server (Ctrl-C) when done.
+Expected: JSON response with a `draft` mentioning purging an air bubble, `escalate: false`, and a citation referencing `DM-5400_manual`. Stop the server (Ctrl-C) when done.
 
 ---
 
@@ -3062,7 +3062,7 @@ if st.button("Get resolution") and symptom:
 streamlit run serving/streamlit_app.py
 ```
 
-In the browser: select model `DM-4500`, enter symptom `E-104`, click "Get resolution". Expected: a grounded answer describing purging an air bubble, confidence displayed, an expandable citations list showing `DM-4500_manual`. Then try model `(unknown)` with symptom `E-999` — expected: an escalation warning since the code doesn't exist in the corpus. Stop the server (Ctrl-C) when done.
+In the browser: select model `DM-5400`, enter symptom `E-104`, click "Get resolution". Expected: a grounded answer describing purging an air bubble, confidence displayed, an expandable citations list showing `DM-5400_manual`. Then try model `(unknown)` with symptom `E-999` — expected: an escalation warning since the code doesn't exist in the corpus. Stop the server (Ctrl-C) when done.
 
 - [ ] **Step 3: Commit**
 
@@ -3102,7 +3102,7 @@ Include, at minimum:
 1. Push the repository to GitHub (confirm with the user before pushing/creating a remote if one doesn't already exist).
 2. In Streamlit Community Cloud, create a new app pointing at this repo, branch `main`, main file `serving/streamlit_app.py`.
 3. In the app's Secrets, add `ANTHROPIC_API_KEY = "..."` (never commit this value).
-4. Deploy and verify the live URL loads and answers a test ticket (e.g. `DM-4500` / `E-104`) the same way the local run did in Task 18.
+4. Deploy and verify the live URL loads and answers a test ticket (e.g. `DM-5400` / `E-104`) the same way the local run did in Task 18.
 5. Add the live URL to `README.md`.
 
 - [ ] **Step 3: Commit**
