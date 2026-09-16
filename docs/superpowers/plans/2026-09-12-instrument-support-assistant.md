@@ -1117,6 +1117,13 @@ def generate_doc(client, prompt: str) -> str:
     return response.content[0].text
 
 
+def _write_if_missing(path: Path, client, prompt: str) -> None:
+    if path.exists():
+        print(f"  skip (already exists): {path.name}")
+        return
+    path.write_text(generate_doc(client, prompt))
+
+
 def main() -> None:
     RAW_DIR.mkdir(parents=True, exist_ok=True)
     client = GeminiClient()
@@ -1130,12 +1137,12 @@ def main() -> None:
             symptoms=_format_symptoms(model),
             error_codes=_format_error_codes(model),
         )
-        (RAW_DIR / f"{model['model_number']}_manual.md").write_text(generate_doc(client, manual_prompt))
+        _write_if_missing(RAW_DIR / f"{model['model_number']}_manual.md", client, manual_prompt)
 
         spec_prompt = SPEC_SHEET_TEMPLATE.format(
             model_number=model["model_number"], tagline=model["tagline"], specs=_format_specs(model)
         )
-        (RAW_DIR / f"{model['model_number']}_spec_sheet.md").write_text(generate_doc(client, spec_prompt))
+        _write_if_missing(RAW_DIR / f"{model['model_number']}_spec_sheet.md", client, spec_prompt)
 
         if "app_report" in model:
             report_prompt = APP_REPORT_TEMPLATE.format(
@@ -1143,7 +1150,7 @@ def main() -> None:
                 focus=model["app_report"]["focus"],
                 model_number=model["model_number"],
             )
-            (RAW_DIR / f"{model['model_number']}_app_report.md").write_text(generate_doc(client, report_prompt))
+            _write_if_missing(RAW_DIR / f"{model['model_number']}_app_report.md", client, report_prompt)
 
         print(f"Generated docs for {model['model_number']}")
 
@@ -1151,6 +1158,8 @@ def main() -> None:
 if __name__ == "__main__":
     main()
 ```
+
+`_write_if_missing` makes the script resumable: the real Gemini API free tier for `gemini-3.8-flash` has a short-window rate limit (observed: 20 requests before a 429 with a ~48s retry hint), so a real run may need multiple invocations. Skipping already-written files means a retry after a rate-limit backoff doesn't re-spend quota on models that already succeeded.
 
 - [ ] **Step 5: Run test to verify it passes**
 
