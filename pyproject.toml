@@ -23,6 +23,9 @@ dev = ["pytest", "xhtml2pdf"]
 [tool.setuptools.packages.find]
 include = ["core*", "domains*", "corpus*", "serving*", "observability*"]
 
+[tool.poetry]
+package-mode = false
+
 [build-system]
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
