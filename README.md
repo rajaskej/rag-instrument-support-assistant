@@ -64,8 +64,17 @@ the query for precision.
 **Generation & agent:** retrieved chunks are assembled into a context block
 sent to Gemini with a strict grounding prompt — answer only from the
 provided excerpts, cite every claim as `[doc_id, section]`, say "insufficient
-information" instead of filling gaps from general knowledge. The agent's
-confidence score derives from the reranker's top-chunk score (hard-0 when
+information" instead of filling gaps from general knowledge.
+
+(The project was originally scoped around Claude Haiku; it moved to the
+Gemini API specifically so the full corpus generation and ~240-call eval
+ablation could run entirely on a free tier at zero cost, rather than a paid
+API — a deliberate cost constraint for a self-funded portfolio project, not
+a capability tradeoff. The LLM client is a thin, swappable adapter —
+`core/generation/llm_client.GeminiClient` — precisely so this choice isn't
+load-bearing.)
+
+The agent's confidence score derives from the reranker's top-chunk score (hard-0 when
 the ticket names a model number not present in the corpus at all); below a
 threshold, the response states insufficient documentation and recommends
 escalation instead of guessing.
@@ -144,6 +153,40 @@ confidence/escalate decision. `python -m scripts.observability_summary`
 prints aggregate stats (p50/p95 latency, token usage, escalation rate).
 Cost is $0 — corpus generation, evaluation, and serving all run on the
 Gemini API's free tier.
+
+## Production considerations
+
+This project's stack (Chroma, local sentence-transformers, SQLite, Streamlit
+Cloud) is sized for a synthetic ~80-chunk corpus at zero cost, not
+enterprise scale. It's a deliberately different set of tradeoffs than a
+cloud-native deployment would make, not a smaller version of one. If this
+pipeline were rebuilt against a real document set on Azure/Databricks:
+
+- **Vector store:** Chroma's file-based persistence is fine for 80 chunks
+  committed to git; it isn't a multi-writer, horizontally-scalable store.
+  **Azure AI Search** would replace it — native vector + hybrid (BM25)
+  search in one service (collapsing this project's separate BM25 index and
+  RRF fusion step into the platform), plus access control and scaling this
+  project doesn't need to solve itself.
+- **Ingestion at scale:** `scripts/build_index.py` parses ~16 documents
+  serially, in-process. Thousands of manuals with a real update cadence
+  would need a **Databricks** pipeline instead: Spark for parallel
+  PDF/HTML parsing and chunking, Delta Lake as the versioned chunk store
+  (this project's flat JSONL doesn't handle concurrent writers or
+  incremental re-ingestion when a source doc changes), and Databricks
+  Workflows to schedule re-indexing rather than a manually-run script.
+- **Eval as a tracked artifact, not a file:** `results.csv` is fine for one
+  ablation run authored by one person. At scale, eval runs (which retrieval
+  config, which model version, which corpus snapshot) belong in **MLflow**
+  (Databricks-native) so results are comparable across runs over time
+  instead of overwritten by the next `run_eval.py` invocation.
+- **Generation model:** swapping Gemini for **Azure OpenAI** is a
+  `LLMClient` implementation, not an architecture change — see the note on
+  `GeminiClient` above.
+- **Secrets & observability:** Streamlit's secrets manager and a local
+  SQLite log become **Azure Key Vault** and **Azure Monitor/Application
+  Insights** respectively, for centralized secret rotation and request
+  tracing across more than one process.
 
 ## Setup
 
