@@ -24,7 +24,13 @@ dev = ["pytest", "xhtml2pdf"]
 include = ["core*", "domains*", "corpus*", "serving*", "observability*"]
 
 [tool.poetry]
-package-mode = false
+packages = [
+    { include = "core" },
+    { include = "domains" },
+    { include = "corpus" },
+    { include = "serving" },
+    { include = "observability" },
+]
 
 [build-system]
 requires = ["setuptools>=68"]
