@@ -11,7 +11,6 @@ dependencies = [
     "beautifulsoup4",
     "lxml",
     "markdown",
-    "xhtml2pdf",
     "fastapi",
     "uvicorn",
     "streamlit",
@@ -19,7 +18,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest"]
+dev = ["pytest", "xhtml2pdf"]
 
 [tool.setuptools.packages.find]
 include = ["core*", "domains*", "corpus*", "serving*", "observability*"]
