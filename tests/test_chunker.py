@@ -28,6 +28,16 @@ def test_heading_change_starts_a_new_chunk():
     assert chunks[1].section_path == "Specifications"
 
 
+def test_chunk_text_includes_heading_path_for_retrievability():
+    blocks = [
+        Block(["Error Codes", "E-104"], BlockType.TEXT, "Description: Air bubble detected in the density cell."),
+    ]
+    chunks = chunk_blocks(blocks, doc_id="doc1", model_number="DM-5400", doc_type="manual")
+    assert len(chunks) == 1
+    assert "E-104" in chunks[0].text
+    assert "Air bubble detected" in chunks[0].text
+
+
 def test_table_is_never_split_and_gets_its_own_chunk():
     blocks = [
         Block(["Specifications"], BlockType.TEXT, "Intro text."),
@@ -37,7 +47,7 @@ def test_table_is_never_split_and_gets_its_own_chunk():
     chunks = chunk_blocks(blocks, doc_id="doc1", model_number=None, doc_type="manual")
     table_chunks = [c for c in chunks if "Range" in c.text]
     assert len(table_chunks) == 1
-    assert table_chunks[0].text == "| Range | 0-3 |"
+    assert table_chunks[0].text == "Specifications\n\n| Range | 0-3 |"
 
 
 def test_oversized_list_block_is_split_only_at_step_boundaries():
@@ -47,9 +57,12 @@ def test_oversized_list_block_is_split_only_at_step_boundaries():
     chunks = chunk_blocks(blocks, doc_id="doc1", model_number=None, doc_type="manual", max_tokens=300)
     assert len(chunks) > 1
     for chunk in chunks:
-        first_line = chunk.text.splitlines()[0]
-        assert first_line.strip()[0].isdigit()
-        assert len(chunk.text.split()) <= 300
+        lines = chunk.text.splitlines()
+        assert lines[0] == "Calibration Procedure"
+        first_step_line = lines[2]
+        assert first_step_line.strip()[0].isdigit()
+        body = "\n".join(lines[2:])
+        assert len(body.split()) <= 300
 
 
 def test_chunk_ids_are_unique_and_sequential():

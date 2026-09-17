@@ -19,12 +19,13 @@ def chunk_blocks(
     current_heading: list[str] | None = None
 
     def make_chunk(heading_path: list[str], text: str) -> Chunk:
+        section_path = " > ".join(heading_path)
         return Chunk(
             chunk_id=f"{doc_id}::{len(chunks)}",
-            text=text,
+            text=f"{section_path}\n\n{text}",
             doc_id=doc_id,
             model_number=model_number,
-            section_path=" > ".join(heading_path),
+            section_path=section_path,
             doc_type=doc_type,
         )
 
@@ -92,7 +93,7 @@ def _split_list_block(
     return [
         Chunk(
             chunk_id=f"{doc_id}::{start_index + i}",
-            text="\n".join(group),
+            text=f"{section_path}\n\n" + "\n".join(group),
             doc_id=doc_id,
             model_number=model_number,
             section_path=section_path,
