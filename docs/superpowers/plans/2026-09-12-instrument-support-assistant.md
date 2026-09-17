@@ -14,7 +14,7 @@
 - Dense embeddings: `sentence-transformers/all-MiniLM-L6-v2` (local, no extra API key).
 - Reranker: `cross-encoder/ms-marco-MiniLM-L-6-v2` (local).
 - Vector DB: Chroma with file-based persistence (`chromadb.PersistentClient`) — no external service.
-- Generation, judge, and corpus-generation LLM: Gemini 3.8 Flash, model ID `gemini-3.8-flash`, called via the Gemini API's free tier — the whole project runs at $0 API cost. One model used everywhere (no cost-driven tiering) since the free tier is what makes cost irrelevant.
+- Generation, judge, and corpus-generation LLM: Gemini 2.5 Flash-Lite, model ID `gemini-2.5-flash-lite`, called via the Gemini API's free tier — the whole project runs at $0 API cost. One model used everywhere (no cost-driven tiering) since the free tier is what makes cost irrelevant. (Originally `gemini-3.8-flash`; switched after discovering its free tier has a ~20-request daily quota, too tight for this project's real corpus-generation and eval-ablation call volumes — flash-lite tiers carry a much larger free-tier allowance. See the "Model downgrade" note in Self-Review Notes.)
 - The corpus is 100% original synthetic content (fictional `DM-` density meter and `RH-` rheometer models) — never Anton Paar's real documentation or site content. The README must disclose this.
 - No multi-step agentic planning: the agent is exactly one retrieve → draft → score → decide pass per request.
 - Chunking: split at heading boundaries; a table is never split; a numbered procedure is split only at step boundaries if it exceeds ~500 tokens; every chunk carries `doc_id`, `model_number`, `section_path`, `doc_type` metadata.
@@ -107,9 +107,9 @@ import os
 
 DENSE_EMBEDDING_MODEL = "all-MiniLM-L6-v2"
 RERANKER_MODEL = "cross-encoder/ms-marco-MiniLM-L-6-v2"
-GENERATION_MODEL = os.environ.get("GENERATION_MODEL", "gemini-3.8-flash")
-JUDGE_MODEL = os.environ.get("JUDGE_MODEL", "gemini-3.8-flash")
-CORPUS_GEN_MODEL = os.environ.get("CORPUS_GEN_MODEL", "gemini-3.8-flash")
+GENERATION_MODEL = os.environ.get("GENERATION_MODEL", "gemini-2.5-flash-lite")
+JUDGE_MODEL = os.environ.get("JUDGE_MODEL", "gemini-2.5-flash-lite")
+CORPUS_GEN_MODEL = os.environ.get("CORPUS_GEN_MODEL", "gemini-2.5-flash-lite")
 MAX_CHUNK_TOKENS = 500
 ```
 
@@ -3272,3 +3272,4 @@ EOF
 - **Model ID correction (original plan):** the initial design conversation referenced `claude-haiku-4-5-20251001`; the corrected canonical ID (verified via the `claude-api` skill) was `claude-haiku-4-5`, with `claude-sonnet-5` for corpus authoring — both were used consistently in `core/config.py` and every task that referenced a model string, at that time.
 - **Provider pivot (during execution, after Task 6):** mid-implementation, the human partner decided to avoid Claude API cost entirely and switch to the Gemini API's free tier instead. This plan was amended in place: `core/generation/llm_client.GeminiClient` was added as a thin adapter preserving the exact `client.messages.create(...) -> response` shape `generate.py`/`metrics.py`/`agent.py` already depend on, `tests.fakes.FakeAnthropicClient` was renamed to `FakeLLMClient`, all three model constants now default to `gemini-3.8-flash`, the `anthropic` dependency became `google-genai`, and the per-token Haiku cost constants were dropped from observability (Gemini's free tier is $0 cost, so token counts are reported instead of a dollar estimate). Tasks 1 and 5 (already implemented at pivot time) went through additional fix rounds to match; verify no task past Task 6 was implemented from a stale (pre-pivot, Anthropic-based) brief before trusting its code.
 - **Type consistency check:** `Chunk`, `Block`/`BlockType`, `RetrievalResult`, `GroundedAnswer`, `Response`, `Ticket`, and `EvalItem` are defined once (Tasks 2, 9, 11, 12, 14) and referenced with identical field names in every later task that consumes them.
+- **Model downgrade (during execution, while running the real corpus generation for the first time):** `gemini-3.8-flash`'s free tier turned out to have a ~20-request daily quota (confirmed empirically: after the quota was hit, waiting nearly an hour with retries produced zero additional successes, and a subsequent attempt a day later also failed, this time with a transient 500 "high demand" error) — far too tight for this project's real corpus-generation (~16 calls) and eval-ablation (~240 calls) volumes. Switched all three model constants in `core/config.py` (Task 1) to `gemini-2.5-flash-lite`, which carries a substantially larger free-tier allowance, and updated the Global Constraints description to match. Test files in Tasks 11-14 that pass `"gemini-3.8-flash"` as an arbitrary literal string parameter (not read from `core.config`) were left unchanged — those tests validate model-string pass-through generically and don't depend on which literal is used, so this wasn't worth another review cycle across four already-approved tasks purely for cosmetic consistency. Task 1's own `_key_check`-style verification that `gemini-3.8-flash` is a real, listed model in the SDK's `Model` type remains historically accurate and was left as-is.
