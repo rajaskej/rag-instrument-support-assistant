@@ -18,7 +18,7 @@ def get_agent() -> InstrumentSupportAgent:
 st.title("Instrument Technical Support Assistant")
 st.caption(
     "Demo assistant over a synthetic, LLM-generated instrument documentation corpus "
-    "(no real Anton Paar content). See the README for details."
+    "for a fictional line of lab instruments. See the README for details."
 )
 
 model_numbers = ["(unknown)"] + sorted(m["model_number"] for m in MODELS)
